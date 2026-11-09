@@ -1,7 +1,7 @@
 {
   "denue_actividades": ["46111", "46211"],
   "denue_nota": "46111 = tiendas de abarrotes y misceláneas; 46211 = supermercados y minisupers",
-  "banxico_series": [],
-  "banxico_nota": "Claves de serie del SIE (empiezan con SF). Búscalas en el cuadro CF958 de Banxico. Si pones varias, se suman por fecha.",
+  "banxico_series": ["SF351174", "SF351123"],
+  "banxico_nota": "SF351174 = Monto transaccionado en Ventas al detalle (Retail) (Total); SF351123 = Monto transaccionado en Grandes superficies (Total). Cuadro CF958, diarias, en pesos. Se suman por fecha. Banxico las registra en fecha de liquidación (24 a 72 horas después de la compra).",
   "banxico_anios": 3
 }
