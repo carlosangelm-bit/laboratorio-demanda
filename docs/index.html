@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Laboratorio de demanda</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js"></script>
+<style>
+:root{
+  --bg:#F5F4F2; --surface:#FFFFFF; --ink:#24170F; --muted:#6E615A; --line:#E2DCD8;
+  --brand:#C8102E; --brand-soft:#F7DDE1; --on-brand:#FFFFFF;
+  --cocoa:#7A4A2E; --cocoa-soft:#E9DCD3;
+  --ext:#46606F; --ext-soft:#E0E8ED; --on-ext:#FFFFFF;
+  --good:#2D7A57; --focus:#1F6FEB;
+  color-scheme: light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#16110E; --surface:#201915; --ink:#F2EAE5; --muted:#B5A79F; --line:#3B302A;
+    --brand:#FF5468; --brand-soft:#47202A; --on-brand:#1A0A0D;
+    --cocoa:#D9A27D; --cocoa-soft:#3A2B22;
+    --ext:#93B4C7; --ext-soft:#243039; --on-ext:#0E1A21;
+    --good:#5CC796; --focus:#6EA8FF; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16110E; --surface:#201915; --ink:#F2EAE5; --muted:#B5A79F; --line:#3B302A;
+  --brand:#FF5468; --brand-soft:#47202A; --on-brand:#1A0A0D;
+  --cocoa:#D9A27D; --cocoa-soft:#3A2B22;
+  --ext:#93B4C7; --ext-soft:#243039; --on-ext:#0E1A21;
+  --good:#5CC796; --focus:#6EA8FF; color-scheme: dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{height:100%;scroll-padding-top:calc(env(safe-area-inset-top,0px) + 64px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Archivo",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+button,select,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 20px}
+.mast{padding:28px 0 18px}
+.mast-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:28px;align-items:end}
+h1{font-stretch:68%;font-weight:800;font-size:clamp(2.3rem,5.4vw,3.7rem);line-height:.92;letter-spacing:-.01em;margin:0 0 12px}
+.lede{margin:0;color:var(--muted);max-width:46ch}
+.bar{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;padding:6px;border-radius:10px;background:var(--cocoa-soft)}
+.seg{appearance:none;border:0;text-align:left;cursor:pointer;min-height:78px;border-radius:6px;padding:9px 9px 8px;background:var(--surface);color:var(--muted);display:flex;flex-direction:column;justify-content:space-between;box-shadow:inset 0 -4px 0 rgba(0,0,0,.06);transition:transform .15s}
+.seg:hover{transform:translateY(-1px)}
+.seg b{font-stretch:80%;font-weight:700;font-size:.86rem;line-height:1.1;color:var(--ink)}
+.seg span{font-size:.74rem;font-variant-numeric:tabular-nums}
+.seg.on.int{background:var(--brand);color:var(--on-brand)} .seg.on.int b{color:var(--on-brand)}
+.seg.on.ext{background:var(--ext);color:var(--on-ext)} .seg.on.ext b{color:var(--on-ext)}
+.seg.on{box-shadow:inset 0 -4px 0 rgba(0,0,0,.18)}
+.legend{display:flex;gap:16px;font-size:.78rem;color:var(--muted);margin-top:8px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.tabs-shell{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{appearance:none;background:none;border:0;padding:14px 14px 12px;white-space:nowrap;cursor:pointer;color:var(--muted);border-bottom:3px solid transparent;font-weight:500}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--brand);font-weight:700}
+.demo{background:var(--brand-soft);color:var(--ink);font-size:.9rem}
+.demo .wrap{display:flex;gap:12px;align-items:center;justify-content:space-between;padding-top:10px;padding-bottom:10px;flex-wrap:wrap}
+main.wrap{padding-top:30px;padding-bottom:64px}
+section[hidden]{display:none}
+h2{font-stretch:75%;font-weight:800;font-size:clamp(1.6rem,3.2vw,2.2rem);line-height:1.05;margin:0 0 6px}
+h3{font-stretch:85%;font-weight:700;font-size:1.12rem;margin:34px 0 8px}
+.sub{color:var(--muted);margin:0 0 20px;max-width:70ch}
+.btn{appearance:none;border:1.5px solid var(--ink);background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:999px;cursor:pointer;font-weight:600;font-size:.92rem}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn.small{padding:6px 12px;font-size:.84rem}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.drop{display:block;border:2px dashed var(--line);border-radius:14px;padding:34px 20px;text-align:center;cursor:pointer;background:var(--surface);transition:border-color .15s,background .15s}
+.drop.over{border-color:var(--brand);background:var(--brand-soft)}
+.drop strong{display:block;font-stretch:80%;font-size:1.35rem;font-weight:700;margin-bottom:4px}
+.drop input{position:absolute;width:1px;height:1px;opacity:0}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:16px}
+.card-h{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.card-h h4{margin:0;font-size:1rem;font-weight:700}
+.meta{color:var(--muted);font-size:.85rem}
+.mapgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px 16px;margin:14px 0}
+.mapgrid label{display:flex;flex-direction:column;gap:4px;font-size:.84rem;color:var(--muted)}
+select{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-width:0;max-width:100%}
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.86rem;font-variant-numeric:tabular-nums}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{font-weight:600;color:var(--muted);background:var(--surface);position:sticky;top:0}
+td.n,th.n{text-align:right}
+tr:last-child td{border-bottom:0}
+.log{margin-top:18px;display:flex;flex-direction:column;gap:8px}
+.log p{margin:0;padding:10px 12px;border-left:3px solid var(--good);background:var(--surface);border-radius:0 8px 8px 0;font-size:.9rem}
+.log p.warn{border-left-color:var(--brand)}
+.filters{display:flex;gap:12px;flex-wrap:wrap;margin:0 0 22px;padding:12px;border-radius:10px;background:var(--surface);border:1px solid var(--line)}
+.filters label{display:flex;flex-direction:column;gap:3px;font-size:.78rem;color:var(--muted);min-width:150px;flex:1}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:8px 0 6px}
+.kpi{padding:14px 2px 6px;border-top:3px solid var(--brand)}
+.kpi .l{font-size:.84rem;color:var(--muted)}
+.kpi .v{font-stretch:78%;font-weight:800;font-size:2rem;line-height:1.1;font-variant-numeric:tabular-nums}
+.kpi .d{font-size:.86rem;font-variant-numeric:tabular-nums}
+.up{color:var(--good)} .down{color:var(--brand)}
+.chart{position:relative;height:320px;margin-top:10px}
+.chart.tall{height:auto}
+.read{font-size:1.05rem;max-width:68ch;margin:14px 0 0}
+.read strong{font-weight:700}
+.tag{display:inline-block;font-size:.74rem;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);vertical-align:2px;margin-left:6px;font-weight:500}
+.tag.assoc{border-color:var(--ext);color:var(--ext)}
+.empty{padding:28px;border:1.5px dashed var(--line);border-radius:12px;color:var(--muted);background:var(--surface)}
+.empty p{margin:0 0 12px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px}
+.sliders{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 22px;margin:4px 0 18px}
+.sliders label{font-size:.86rem;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+input[type=range]{accent-color:var(--brand)}
+.src{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.src article{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;border-top:4px solid var(--ext)}
+.src article.int{border-top-color:var(--brand)}
+.src h4{margin:0 0 4px;font-size:1rem}
+.src p{margin:6px 0;font-size:.88rem;color:var(--muted)}
+.src a{color:var(--ink)}
+.note{font-size:.84rem;color:var(--muted);max-width:75ch}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:.9rem;z-index:20;max-width:90vw}
+@media (max-width:820px){
+  .mast-grid{grid-template-columns:1fr}
+  .bar{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .two{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="mast">
+  <div class="wrap mast-grid">
+    <div>
+      <h1>Laboratorio de demanda</h1>
+      <p class="lede">Cruza las ventas internas con fuentes públicas de México. Los archivos se procesan en este navegador y no se guardan en ningún servidor: al cerrar la página, los datos desaparecen.</p>
+    </div>
+    <div>
+      <div class="bar" id="bar" aria-label="Fuentes cargadas"></div>
+      <div class="legend"><span><i style="background:var(--brand)"></i>Dato interno</span><span><i style="background:var(--ext)"></i>Fuente pública</span><span><i style="background:var(--surface);border:1px solid var(--line)"></i>Sin cargar</span></div>
+    </div>
+  </div>
+</header>
+<div class="tabs-shell"><nav class="wrap tabs" role="tablist" id="tabs"></nav></div>
+<div class="demo" id="demoBanner" hidden><div class="wrap"><span>Estás viendo datos ficticios de demostración. Ninguna cifra corresponde a una marca ni a fuentes reales.</span><button class="btn small ghost" id="clearDemo">Quitar datos de ejemplo</button></div></div>
+<main class="wrap">
+
+<section id="p-cargar">
+  <h2>Cargar datos</h2>
+  <p class="sub">Sube los archivos tal como salen de SAP, NielsenIQ, las cadenas o las fuentes públicas. Cada hoja se revisa por separado: confirma qué tipo de dato es y qué columna corresponde a cada campo.</p>
+  <label class="drop" id="drop">
+    <strong>Arrastra aquí tus archivos de Excel o CSV</strong>
+    <span class="meta">o haz clic para elegirlos. Puedes subir varios a la vez.</span>
+    <input type="file" id="file" multiple accept=".xlsx,.xls,.xlsm,.csv,.txt">
+  </label>
+  <div class="row" style="margin-top:14px"><button class="btn ghost" id="loadDemo">Probar con datos de ejemplo</button><span class="meta">Descarga las plantillas en la pestaña Fuentes y plantillas.</span></div>
+  <p class="note" id="autoNote" hidden></p>
+  <div id="pending"></div>
+  <div class="log" id="log"></div>
+</section>
+
+<section id="p-base" hidden>
+  <h2>Revisar base</h2>
+  <p class="sub">Qué hay cargado, qué periodo cubre y qué valores no se pudieron reconocer.</p>
+  <div id="baseOut"></div>
+</section>
+
+<section id="p-ventas" hidden>
+  <h2>¿Crecimos de verdad?</h2>
+  <p class="sub">Separa el crecimiento en pesos en lo que viene de vender más, de cobrar más por kilo y de vender una mezcla distinta de productos. Un cambio de gramaje aparece como precio por kilo.</p>
+  <div class="filters" data-filters></div>
+  <div id="ventasOut"></div>
+</section>
+
+<section id="p-calendario" hidden>
+  <h2>Calendario</h2>
+  <p class="sub">Qué semanas del año venden más y si las quincenas mueven la venta.</p>
+  <div class="filters" data-filters></div>
+  <div id="calOut"></div>
+</section>
+
+<section id="p-potencial" hidden>
+  <h2>Potencial por estado</h2>
+  <p class="sub">Compara la participación de cada estado en la venta con su participación en tiendas, población y poder de compra. Un índice menor a 100 indica que el estado vende menos de lo que su tamaño sugiere.</p>
+  <div class="filters" data-filters data-noestado></div>
+  <div id="potOut"></div>
+</section>
+
+<section id="p-clima" hidden>
+  <h2>Clima y ventas</h2>
+  <p class="sub">Cada estado se compara contra su propio promedio y contra el resto del país en la misma semana, para que Navidad o el Buen Fin no se confundan con el efecto del calor.</p>
+  <div class="filters" data-filters></div>
+  <div id="climaOut"></div>
+</section>
+
+<section id="p-fuentes" hidden>
+  <h2>Fuentes y plantillas</h2>
+  <p class="sub">De dónde sale cada dato, cómo descargarlo y en qué formato subirlo.</p>
+  <div class="row" style="margin-bottom:18px"><button class="btn" id="dlTemplates">Descargar plantillas de Excel</button><button class="btn ghost" id="dlExport">Exportar base consolidada</button></div>
+  <div class="src" id="srcList"></div>
+  <p class="note" style="margin-top:20px" id="autoFuentes">Las tiendas del DENUE y el gasto con tarjeta de Banxico se actualizan solos cada semana. Población, gasto por estado de BBVA y temperatura se pueden subir aquí o dejar en la carpeta datos_manuales del repositorio para que también se carguen solos.</p>
+</section>
+</main>
+<div class="toast" id="toast" hidden></div>
+<script>
+(function (g) {
+  "use strict";
+  const MS = 86400000;
+  const STATES = ["Aguascalientes","Baja California","Baja California Sur","Campeche","Coahuila","Colima","Chiapas","Chihuahua","Ciudad de México","Durango","Guanajuato","Guerrero","Hidalgo","Jalisco","Estado de México","Michoacán","Morelos","Nayarit","Nuevo León","Oaxaca","Puebla","Querétaro","Quintana Roo","San Luis Potosí","Sinaloa","Sonora","Tabasco","Tamaulipas","Tlaxcala","Veracruz","Yucatán","Zacatecas"];
+
+  function norm(s) {
+    return String(s == null ? "" : s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  }
+  const ALIAS = {};
+  STATES.forEach(s => { ALIAS[norm(s)] = s; });
+  Object.assign(ALIAS, {
+    "cdmx": "Ciudad de México", "df": "Ciudad de México", "d f": "Ciudad de México", "distrito federal": "Ciudad de México", "mexico city": "Ciudad de México", "ciudad de mexico": "Ciudad de México",
+    "mexico": "Estado de México", "edomex": "Estado de México", "edo mex": "Estado de México", "edo de mexico": "Estado de México", "estado de mexico": "Estado de México", "mex": "Estado de México",
+    "coahuila de zaragoza": "Coahuila", "michoacan de ocampo": "Michoacán", "veracruz de ignacio de la llave": "Veracruz", "queretaro de arteaga": "Querétaro",
+    "bc": "Baja California", "bcs": "Baja California Sur", "nl": "Nuevo León", "slp": "San Luis Potosí", "qroo": "Quintana Roo", "q roo": "Quintana Roo",
+    "ags": "Aguascalientes", "gto": "Guanajuato", "jal": "Jalisco", "pue": "Puebla", "ver": "Veracruz", "yuc": "Yucatán", "chih": "Chihuahua", "son": "Sonora",
+    "sin": "Sinaloa", "tamps": "Tamaulipas", "oax": "Oaxaca", "gro": "Guerrero", "hgo": "Hidalgo", "mich": "Michoacán", "mor": "Morelos", "nay": "Nayarit",
+    "zac": "Zacatecas", "dgo": "Durango", "camp": "Campeche", "chis": "Chiapas", "tab": "Tabasco", "tlax": "Tlaxcala", "qro": "Querétaro", "coah": "Coahuila"
+  });
+  const ALIAS_KEYS = Object.keys(ALIAS).filter(k => k.length > 3).sort((a, b) => b.length - a.length);
+
+  function toState(v) {
+    if (v == null || v === "") return null;
+    if (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 32) return STATES[v - 1];
+    const s = norm(v);
+    if (/^\d{1,2}$/.test(s)) { const n = +s; return n >= 1 && n <= 32 ? STATES[n - 1] : null; }
+    if (ALIAS[s]) return ALIAS[s];
+    for (const k of ALIAS_KEYS) if (s.startsWith(k + " ")) return ALIAS[k];
+    return null;
+  }
+
+  function parseNum(v) {
+    if (v == null || v === "") return null;
+    if (typeof v === "number") return isFinite(v) ? v : null;
+    let s = String(v).trim().replace(/mxn/i, "").replace(/[$\s%]/g, "");
+    let neg = false;
+    if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); }
+    if (s.includes(",") && s.includes(".")) {
+      if (s.lastIndexOf(",") > s.lastIndexOf(".")) s = s.replace(/\./g, "").replace(",", ".");
+      else s = s.replace(/,/g, "");
+    } else if (s.includes(",")) {
+      const p = s.split(",");
+      s = (p.length === 2 && p[1].length !== 3) ? p[0] + "." + p[1] : s.replace(/,/g, "");
+    }
+    if (s === "" || s === "-") return null;
+    const n = Number(s);
+    return isFinite(n) ? (neg ? -n : n) : null;
+  }
+
+  function utc(y, m, d) {
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return (dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d) ? dt : null;
+  }
+  function isoWeekStart(y, w) {
+    if (!(w >= 1 && w <= 53)) return null;
+    const jan4 = new Date(Date.UTC(y, 0, 4));
+    const dow = (jan4.getUTCDay() + 6) % 7;
+    return new Date(jan4.getTime() - dow * MS + (w - 1) * 7 * MS);
+  }
+  const MES = { ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6, jul: 7, ago: 8, sep: 9, set: 9, oct: 10, nov: 11, dic: 12, jan: 1, apr: 4, aug: 8, dec: 12 };
+  function parseDate(v) {
+    if (v == null || v === "") return null;
+    if (v instanceof Date) return isNaN(v) ? null : utc(v.getFullYear(), v.getMonth() + 1, v.getDate());
+    if (typeof v === "number") {
+      if (v > 20000 && v < 80000) return new Date(Date.UTC(1899, 11, 30) + Math.floor(v) * MS);
+      if (v > 19000101 && v < 21001232) return utc(Math.floor(v / 10000), Math.floor(v / 100) % 100, v % 100);
+      if (v > 190000 && v < 210013) return utc(Math.floor(v / 100), v % 100, 1);
+      return null;
+    }
+    const s = String(v).trim();
+    let m;
+    if ((m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/))) return utc(+m[1], +m[2], +m[3]);
+    if ((m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/))) { let y = +m[3]; if (y < 100) y += 2000; return utc(y, +m[2], +m[1]); }
+    if ((m = s.match(/^(\d{4})\s*-?\s*w(?:k|eek)?\s*(\d{1,2})$/i))) return isoWeekStart(+m[1], +m[2]);
+    if ((m = s.match(/^(\d{4})[-/](\d{1,2})$/))) return utc(+m[1], +m[2], 1);
+    if ((m = s.match(/^(\d{4})(\d{2})(\d{2})$/))) return utc(+m[1], +m[2], +m[3]);
+    if ((m = s.match(/^(\d{4})(\d{2})$/))) return utc(+m[1], +m[2], 1);
+    const n = norm(s);
+    if ((m = n.match(/^(?:(\d{1,2}) (?:de )?)?([a-z]{3})[a-z]* (?:de |del )?(\d{4})$/))) { const mo = MES[m[2]]; if (mo) return utc(+m[3], mo, m[1] ? +m[1] : 1); }
+    if ((m = n.match(/^(?:sem|semana) ?(\d{1,2}) (?:de |del )?(\d{4})$/))) return isoWeekStart(+m[2], +m[1]);
+    if ((m = n.match(/^(\d{4}) (?:sem|semana) ?(\d{1,2})$/))) return isoWeekStart(+m[1], +m[2]);
+    return null;
+  }
+  function weekStart(d) { const dow = (d.getUTCDay() + 6) % 7; return new Date(d.getTime() - dow * MS); }
+  function key(d) { return d.toISOString().slice(0, 10); }
+  function isoWeek(d) {
+    const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    const day = (t.getUTCDay() + 6) % 7;
+    t.setUTCDate(t.getUTCDate() - day + 3);
+    const firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+    return 1 + Math.round(((t - firstThu) / MS - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7);
+  }
+  function isLastDay(d) { return new Date(d.getTime() + MS).getUTCDate() === 1; }
+  function isPayDay(d) { const n = d.getUTCDate(); return n === 15 || n === 16 || n === 1 || n === 2 || isLastDay(d); }
+  function weekHasPayday(monday) {
+    for (let i = 0; i < 7; i++) { const d = new Date(monday.getTime() + i * MS); if (d.getUTCDate() === 15 || isLastDay(d)) return true; }
+    return false;
+  }
+  function gramsFromName(name) {
+    const m = String(name || "").match(/(\d+(?:[.,]\d+)?)\s*(?:g|gr|grs|gramos)\b/i);
+    return m ? parseFloat(m[1].replace(",", ".")) : null;
+  }
+
+  const SCHEMAS = {
+    ventas: {
+      label: "Ventas internas", short: "Ventas", origin: "interno",
+      hint: "Sell-in, sell-out de NIQ o scan data de cadenas. Una fila por fecha o semana, con pesos y piezas o kilos.",
+      fields: [
+        { k: "fecha", label: "Fecha o semana", syn: ["fecha", "date", "dia", "periodo", "fecha inicio", "semana inicio", "week", "fecha venta"] },
+        { k: "anio", label: "Año (si viene separado)", syn: ["ano", "anio", "year", "ejercicio"] },
+        { k: "semana", label: "Número de semana (si viene separado)", syn: ["semana", "sem", "no semana", "num semana", "week number", "wk"] },
+        { k: "estado", label: "Estado", syn: ["estado", "entidad", "entidad federativa", "nom ent", "state", "edo"] },
+        { k: "canal", label: "Canal", syn: ["canal", "channel", "canal venta", "formato", "cadena", "cliente"] },
+        { k: "producto", label: "Producto o SKU", syn: ["producto", "sku", "material", "descripcion", "item", "articulo", "presentacion", "upc", "ean"] },
+        { k: "piezas", label: "Piezas", num: true, syn: ["piezas", "unidades", "units", "pzas", "pz", "cantidad", "volumen unidades", "unidades vendidas"] },
+        { k: "pesos", label: "Venta en pesos", num: true, syn: ["pesos", "venta pesos", "ventas pesos", "venta", "ventas", "importe", "monto", "valor", "venta mxn", "sales", "venta neta"] },
+        { k: "gramos", label: "Gramos por pieza", num: true, syn: ["gramos", "gramaje", "peso g", "peso gr", "contenido g", "grs", "g"] },
+        { k: "kg", label: "Kilos", num: true, syn: ["kg", "kilos", "kilogramos", "volumen kg", "kgs"] }
+      ]
+    },
+    tiendas: {
+      label: "Tiendas por estado (DENUE)", short: "Tiendas", origin: "externo",
+      hint: "Descarga del DENUE: una fila por establecimiento, o un conteo por estado.",
+      fields: [
+        { k: "estado", label: "Estado", syn: ["entidad", "estado", "nom ent", "entidad federativa", "cve ent"] },
+        { k: "tiendas", label: "Número de tiendas (si ya viene contado)", num: true, syn: ["tiendas", "establecimientos", "unidades economicas", "conteo", "total"] },
+        { k: "actividad", label: "Actividad económica", syn: ["nombre act", "actividad", "codigo act", "scian", "clase actividad"] }
+      ]
+    },
+    poblacion: {
+      label: "Población e ingreso (Censo, ENIGH)", short: "Población", origin: "externo",
+      hint: "Una fila por estado con población y, si la tienes, ingreso promedio por hogar.",
+      fields: [
+        { k: "estado", label: "Estado", syn: ["entidad", "estado", "nom ent", "entidad federativa"] },
+        { k: "poblacion", label: "Población", num: true, syn: ["poblacion", "pobtot", "poblacion total", "habitantes"] },
+        { k: "ingreso", label: "Ingreso promedio por hogar", num: true, syn: ["ingreso", "ingreso corriente", "ing cor", "ingreso promedio", "ingreso hogar"] }
+      ]
+    },
+    gastoEstatal: {
+      label: "Gasto con tarjeta por estado (BBVA)", short: "Gasto estatal", origin: "externo",
+      hint: "Descarga de BBVA Research: fecha, estado y valor (variación o índice).",
+      fields: [
+        { k: "fecha", label: "Fecha", syn: ["fecha", "date", "periodo", "dia"] },
+        { k: "estado", label: "Estado", syn: ["estado", "entidad", "region", "state"] },
+        { k: "valor", label: "Valor", num: true, syn: ["valor", "variacion", "variacion anual", "indice", "consumo", "gasto", "value"] }
+      ]
+    },
+    gastoNacional: {
+      label: "Gasto con tarjeta nacional (Banxico)", short: "Gasto nacional", origin: "externo",
+      hint: "Serie del SIE de Banxico (cuadro CF958): fecha y monto.",
+      fields: [
+        { k: "fecha", label: "Fecha", syn: ["fecha", "date", "periodo", "dia"] },
+        { k: "valor", label: "Monto u operaciones", num: true, syn: ["valor", "monto", "importe", "operaciones", "dato", "sf", "value"] }
+      ]
+    },
+    clima: {
+      label: "Temperatura por estado (SMN)", short: "Clima", origin: "externo",
+      hint: "Temperatura máxima diaria o semanal por estado.",
+      fields: [
+        { k: "fecha", label: "Fecha", syn: ["fecha", "date", "dia", "periodo"] },
+        { k: "estado", label: "Estado", syn: ["estado", "entidad", "nom ent"] },
+        { k: "temp", label: "Temperatura máxima (°C)", num: true, syn: ["temp max", "tmax", "temperatura maxima", "temperatura", "temp", "t max", "maxima"] }
+      ]
+    }
+  };
+  const TYPE_ORDER = ["ventas", "tiendas", "poblacion", "gastoEstatal", "gastoNacional", "clima"];
+
+  function guessMapping(type, headers) {
+    const map = {}; const used = new Set();
+    const nh = headers.map(h => norm(h).replace(/_/g, " "));
+    for (const f of SCHEMAS[type].fields) {
+      let best = -1, bestScore = 0;
+      nh.forEach((h, i) => {
+        if (used.has(i)) return;
+        f.syn.forEach((s, j) => {
+          let sc = 0;
+          if (h === s) sc = 100 - j;
+          else if (s.length > 2 && (h.startsWith(s + " ") || h.endsWith(" " + s) || h.includes(" " + s + " "))) sc = 50 - j;
+          if (sc > bestScore) { bestScore = sc; best = i; }
+        });
+      });
+      if (best >= 0) { map[f.k] = headers[best]; used.add(best); }
+    }
+    return map;
+  }
+  function guessType(headers) {
+    let best = "ventas", bestScore = -1;
+    for (const t of TYPE_ORDER) {
+      const m = guessMapping(t, headers);
+      const req = { ventas: ["pesos"], tiendas: ["estado"], poblacion: ["estado", "poblacion"], gastoEstatal: ["fecha", "estado", "valor"], gastoNacional: ["fecha", "valor"], clima: ["fecha", "estado", "temp"] }[t];
+      if (!req.every(k => m[k])) continue;
+      let score = Object.keys(m).length * 10 - SCHEMAS[t].fields.length;
+      if (t === "ventas" && (m.piezas || m.kg)) score += 30;
+      if (t === "clima") score += 25;
+      if (t === "poblacion") score += 20;
+      if (score > bestScore) { bestScore = score; best = t; }
+    }
+    return best;
+  }
+
+  function transform(type, rows, map) {
+    const out = []; const dropped = {}; const unknown = new Map();
+    const drop = r => { dropped[r] = (dropped[r] || 0) + 1; };
+    const get = (row, k) => (map[k] ? row[map[k]] : null);
+    for (const row of rows) {
+      if (type === "ventas") {
+        let d = parseDate(get(row, "fecha"));
+        if (!d && map.anio && map.semana) { const y = parseNum(get(row, "anio")), w = parseNum(get(row, "semana")); if (y && w) d = isoWeekStart(y, w); }
+        if (!d) { drop("fecha no reconocida"); continue; }
+        let estado = null;
+        if (map.estado) { const raw = get(row, "estado"); estado = toState(raw); if (!estado && raw != null && raw !== "") { unknown.set(String(raw), (unknown.get(String(raw)) || 0) + 1); drop("estado no reconocido"); continue; } }
+        const pesos = parseNum(get(row, "pesos")); const piezas = parseNum(get(row, "piezas"));
+        let kg = parseNum(get(row, "kg"));
+        const producto = map.producto ? String(get(row, "producto") ?? "Sin producto").trim() || "Sin producto" : "Total";
+        if (kg == null && piezas != null) { const gr = parseNum(get(row, "gramos")) ?? gramsFromName(producto); if (gr) kg = piezas * gr / 1000; }
+        if (pesos == null && piezas == null && kg == null) { drop("sin cifras de venta"); continue; }
+        const canal = map.canal ? String(get(row, "canal") ?? "Sin canal").trim() || "Sin canal" : "Total";
+        out.push({ d, w: key(weekStart(d)), estado, canal, producto, pesos, piezas, kg });
+      } else if (type === "tiendas") {
+        const raw = get(row, "estado"); const estado = toState(raw);
+        if (!estado) { if (raw != null && raw !== "") unknown.set(String(raw), (unknown.get(String(raw)) || 0) + 1); drop("estado no reconocido"); continue; }
+        const n = map.tiendas ? parseNum(get(row, "tiendas")) : 1;
+        if (n == null) { drop("conteo no numérico"); continue; }
+        out.push({ estado, tiendas: n, actividad: map.actividad ? String(get(row, "actividad") ?? "") : "" });
+      } else if (type === "poblacion") {
+        const raw = get(row, "estado"); const estado = toState(raw);
+        if (!estado) { if (raw != null && raw !== "") unknown.set(String(raw), (unknown.get(String(raw)) || 0) + 1); drop("estado no reconocido"); continue; }
+        const poblacion = parseNum(get(row, "poblacion"));
+        if (poblacion == null) { drop("población no numérica"); continue; }
+        out.push({ estado, poblacion, ingreso: parseNum(get(row, "ingreso")) });
+      } else {
+        const d = parseDate(get(row, "fecha"));
+        if (!d) { drop("fecha no reconocida"); continue; }
+        let estado = null;
+        if (type !== "gastoNacional") {
+          const raw = get(row, "estado"); estado = toState(raw);
+          if (!estado) { if (raw != null && raw !== "") unknown.set(String(raw), (unknown.get(String(raw)) || 0) + 1); drop("estado no reconocido"); continue; }
+        }
+        const v = parseNum(get(row, type === "clima" ? "temp" : "valor"));
+        if (v == null) { drop("valor no numérico"); continue; }
+        out.push({ d, w: key(weekStart(d)), estado, v });
+      }
+    }
+    return { rows: out, dropped, unknown };
+  }
+
+  /* ---------- análisis ---------- */
+  function sum(a, f) { let s = 0; for (const x of a) { const v = f(x); if (v != null) s += v; } return s; }
+  function volInfo(rows) {
+    const withKg = rows.filter(r => r.kg != null).length;
+    const withPz = rows.filter(r => r.piezas != null).length;
+    if (rows.length && withKg / rows.length >= 0.95) return { key: "kg", label: "Kilos", unit: "kg", priceLabel: "Precio por 100 g", priceMult: 0.1 };
+    if (rows.length && withPz / rows.length >= 0.95) return { key: "piezas", label: "Piezas", unit: "pzas", priceLabel: "Precio por pieza", priceMult: 1 };
+    return { key: withKg >= withPz ? "kg" : "piezas", label: withKg >= withPz ? "Kilos" : "Piezas", unit: withKg >= withPz ? "kg" : "pzas", priceLabel: withKg >= withPz ? "Precio por 100 g" : "Precio por pieza", priceMult: withKg >= withPz ? 0.1 : 1, partial: true };
+  }
+  function periods(rows) {
+    if (!rows.length) return null;
+    let max = 0, min = Infinity;
+    for (const r of rows) { const t = Date.parse(r.w); if (t > max) max = t; if (t < min) min = t; }
+    const W = 7 * MS;
+    const spanWeeks = Math.round((max - min) / W) + 1;
+    let n = 52, label;
+    if (spanWeeks >= 104) label = "Últimas 52 semanas contra las 52 anteriores";
+    else if (spanWeeks >= 65) { n = 13; label = "Últimas 13 semanas contra las mismas 13 del año anterior"; }
+    else if (spanWeeks >= 8) { n = Math.floor(spanWeeks / 2); label = "Últimas " + n + " semanas contra las " + n + " anteriores (no hay un año completo de historia)"; }
+    else return { cur: rows, prev: [], label: "Todo el periodo cargado (menos de 8 semanas: sin comparación)", curRange: [min, max] };
+    const curStart = max - (n - 1) * W;
+    let prevStart, prevEnd;
+    if (n === 13 && spanWeeks >= 65) { prevStart = curStart - 52 * W; prevEnd = max - 52 * W; }
+    else { prevEnd = curStart - W; prevStart = prevEnd - (n - 1) * W; }
+    const cur = [], prev = [];
+    for (const r of rows) { const t = Date.parse(r.w); if (t >= curStart && t <= max) cur.push(r); else if (t >= prevStart && t <= prevEnd) prev.push(r); }
+    return { cur, prev, label, curRange: [curStart, max], prevRange: [prevStart, prevEnd] };
+  }
+  function decompose(cur, prev, vk) {
+    const agg = rows => { const m = new Map(); for (const r of rows) { if (r.pesos == null || r[vk] == null) continue; const o = m.get(r.producto) || { p: 0, v: 0 }; o.p += r.pesos; o.v += r[vk]; m.set(r.producto, o); } return m; };
+    const a1 = agg(cur), a0 = agg(prev);
+    let P1 = 0, V1 = 0, P0 = 0, V0 = 0;
+    a1.forEach(o => { P1 += o.p; V1 += o.v; }); a0.forEach(o => { P0 += o.p; V0 += o.v; });
+    if (!V0 || !V1) return null;
+    const p0 = P0 / V0, p1 = P1 / V1;
+    const volumen = (V1 - V0) * p0;
+    const precioTotal = (p1 - p0) * V1;
+    let puro = 0;
+    a1.forEach((o, k) => { const b = a0.get(k); if (b && b.v && o.v) puro += (o.p / o.v - b.p / b.v) * o.v; });
+    return { base: P0, volumen, precio: puro, mezcla: precioTotal - puro, final: P1, V0, V1, p0, p1 };
+  }
+  function weekly(rows, vk) {
+    const m = new Map();
+    for (const r of rows) { const o = m.get(r.w) || { w: r.w, pesos: 0, vol: 0 }; o.pesos += r.pesos || 0; o.vol += r[vk] || 0; m.set(r.w, o); }
+    return [...m.values()].sort((a, b) => a.w < b.w ? -1 : 1);
+  }
+  function groupBy(rows, kf) { const m = new Map(); for (const r of rows) { const k = kf(r); if (!m.has(k)) m.set(k, []); m.get(k).push(r); } return m; }
+  function seasonality(rows, vk) {
+    const wk = weekly(rows, vk);
+    if (wk.length < 20) return null;
+    const by = new Map();
+    for (const o of wk) { const n = isoWeek(new Date(o.w)); const a = by.get(n) || []; a.push(o.vol); by.set(n, a); }
+    const mean = wk.reduce((s, o) => s + o.vol, 0) / wk.length;
+    const out = [];
+    for (let n = 1; n <= 53; n++) { const a = by.get(n); if (a) out.push({ semana: n, indice: (a.reduce((s, x) => s + x, 0) / a.length) / mean * 100, n: a.length }); }
+    return out;
+  }
+  function centeredRatios(series, half) {
+    const out = [];
+    for (let i = half; i < series.length - half; i++) {
+      let s = 0; for (let j = i - half; j <= i + half; j++) s += series[j].v;
+      const ma = s / (2 * half + 1);
+      if (ma > 0) out.push({ d: series[i].d, r: series[i].v / ma });
+    }
+    return out;
+  }
+  function detectDaily(rows) {
+    const days = new Set(rows.map(r => r.d.getUTCDay()));
+    return days.size > 1;
+  }
+  function paydayEffect(seriesRows, daily) {
+    if (daily) {
+      const m = new Map();
+      for (const r of seriesRows) { const k = key(r.d); m.set(k, (m.get(k) || 0) + r.v); }
+      const ks = [...m.keys()].sort();
+      if (ks.length < 60) return null;
+      const s = []; let t = Date.parse(ks[0]); const end = Date.parse(ks[ks.length - 1]);
+      for (; t <= end; t += MS) { const k = key(new Date(t)); s.push({ d: new Date(t), v: m.get(k) || 0 }); }
+      const rr = centeredRatios(s, 14);
+      const byDom = new Map(); let pay = [], rest = [];
+      for (const o of rr) { const dom = o.d.getUTCDate(); const a = byDom.get(dom) || []; a.push(o.r); byDom.set(dom, a); (isPayDay(o.d) ? pay : rest).push(o.r); }
+      const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+      const dom = []; for (let i = 1; i <= 31; i++) { const a = byDom.get(i); if (a) dom.push({ dia: i, indice: avg(a) * 100 }); }
+      return { daily: true, lift: avg(pay) / avg(rest) - 1, nPay: pay.length, nRest: rest.length, dom };
+    }
+    const m = new Map();
+    for (const r of seriesRows) m.set(r.w, (m.get(r.w) || 0) + r.v);
+    const ks = [...m.keys()].sort();
+    if (ks.length < 20) return null;
+    const s = ks.map(k => ({ d: new Date(k), v: m.get(k) }));
+    const rr = centeredRatios(s, 4);
+    const pay = [], rest = [];
+    for (const o of rr) (weekHasPayday(o.d) ? pay : rest).push(o.r);
+    if (!pay.length || !rest.length) return null;
+    const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+    return { daily: false, lift: avg(pay) / avg(rest) - 1, nPay: pay.length, nRest: rest.length, payAvg: avg(pay) * 100, restAvg: avg(rest) * 100 };
+  }
+  function pearson(x, y) {
+    const n = x.length; if (n < 8) return null;
+    const mx = x.reduce((a, b) => a + b, 0) / n, my = y.reduce((a, b) => a + b, 0) / n;
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let i = 0; i < n; i++) { const a = x[i] - mx, b = y[i] - my; sxy += a * b; sxx += a * a; syy += b * b; }
+    if (!sxx || !syy) return null;
+    return { r: sxy / Math.sqrt(sxx * syy), slope: sxy / sxx, n };
+  }
+  function weeklyCorrelation(ventasRows, vk, gastoRows) {
+    const a = new Map(); for (const r of ventasRows) a.set(r.w, (a.get(r.w) || 0) + (r[vk] || 0));
+    const b = new Map(); for (const r of gastoRows) b.set(r.w, (b.get(r.w) || 0) + r.v);
+    const ks = [...a.keys()].filter(k => b.has(k)).sort();
+    if (ks.length < 20) return null;
+    const ra = centeredRatios(ks.map(k => ({ d: k, v: a.get(k) })), 4);
+    const rb = centeredRatios(ks.map(k => ({ d: k, v: b.get(k) })), 4);
+    return pearson(ra.map(o => o.r), rb.map(o => o.r));
+  }
+  function potential(ventasRows, vk, tiendas, poblacion, weights) {
+    const per = periods(ventasRows);
+    const base = per && per.prev.length ? per.cur : ventasRows;
+    const vol = new Map(); for (const r of base) if (r.estado) vol.set(r.estado, (vol.get(r.estado) || 0) + (r[vk] || 0));
+    const comps = {};
+    if (tiendas.length) { const m = new Map(); for (const r of tiendas) m.set(r.estado, (m.get(r.estado) || 0) + r.tiendas); comps.tiendas = m; }
+    if (poblacion.length) {
+      const m = new Map(), q = new Map(); let hasInc = false;
+      for (const r of poblacion) { m.set(r.estado, r.poblacion); if (r.ingreso != null) { hasInc = true; q.set(r.estado, r.poblacion * r.ingreso); } }
+      comps.poblacion = m; if (hasInc) comps.poder = q;
+    }
+    const used = Object.keys(comps).filter(k => (weights[k] || 0) > 0);
+    if (!vol.size || !used.length) return { available: Object.keys(comps), rows: [], excluded: [] };
+    const states = [...vol.keys()].filter(s => used.every(k => comps[k].has(s)));
+    const excluded = [...vol.keys()].filter(s => !states.includes(s));
+    const wsum = used.reduce((s, k) => s + weights[k], 0);
+    const totals = {}; used.forEach(k => { totals[k] = states.reduce((s, st) => s + comps[k].get(st), 0); });
+    const totalVol = states.reduce((s, st) => s + vol.get(st), 0);
+    const rows = states.map(st => {
+      let pot = 0; used.forEach(k => { pot += (weights[k] / wsum) * (comps[k].get(st) / totals[k]); });
+      const share = vol.get(st) / totalVol;
+      return { estado: st, volumen: vol.get(st), participacion: share, potencial: pot, indice: pot ? share / pot * 100 : null, oportunidad: Math.max(0, (pot - share) * totalVol) };
+    });
+    rows.sort((a, b) => b.oportunidad - a.oportunidad || a.indice - b.indice);
+    return { available: Object.keys(comps), rows, excluded, totalVol, periodLabel: per && per.prev.length ? "últimas " + (per.label.startsWith("Últimas 52") ? "52" : per.label.match(/\d+/)[0]) + " semanas" : "todo el periodo cargado" };
+  }
+  function climate(ventasRows, vk, clima) {
+    const t = new Map(), tc = new Map();
+    for (const r of clima) { const k = r.estado + "|" + r.w; t.set(k, (t.get(k) || 0) + r.v); tc.set(k, (tc.get(k) || 0) + 1); }
+    const v = new Map();
+    for (const r of ventasRows) { if (!r.estado) continue; const k = r.estado + "|" + r.w; v.set(k, (v.get(k) || 0) + (r[vk] || 0)); }
+    const pts = [];
+    v.forEach((vol, k) => { if (t.has(k)) { const [estado, w] = k.split("|"); pts.push({ estado, w, vol, temp: t.get(k) / tc.get(k) }); } });
+    if (pts.length < 30) return null;
+    const byS = groupBy(pts, p => p.estado);
+    byS.forEach(a => { const mv = a.reduce((s, p) => s + p.vol, 0) / a.length, mt = a.reduce((s, p) => s + p.temp, 0) / a.length; a.forEach(p => { p.rv = mv ? p.vol / mv : 1; p.dt = p.temp - mt; }); });
+    const byW = groupBy(pts, p => p.w);
+    byW.forEach(a => { const mr = a.reduce((s, p) => s + p.rv, 0) / a.length, md = a.reduce((s, p) => s + p.dt, 0) / a.length; a.forEach(p => { p.y = mr ? p.rv / mr - 1 : 0; p.x = p.dt - md; }); });
+    const fit = pearson(pts.map(p => p.x), pts.map(p => p.y));
+    const buckets = [[-Infinity, 20, "Menos de 20 °C"], [20, 25, "20 a 25 °C"], [25, 30, "25 a 30 °C"], [30, 35, "30 a 35 °C"], [35, Infinity, "35 °C o más"]].map(([a, b, l]) => {
+      const s = pts.filter(p => p.temp >= a && p.temp < b); return { label: l, n: s.length, y: s.length ? s.reduce((x, p) => x + p.y, 0) / s.length : null };
+    });
+    return { pts, fit, buckets, states: byS.size, weeks: byW.size };
+  }
+
+  /* ---------- datos de demostración (ficticios) ---------- */
+  function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  const POP = [1.43, 3.77, 0.8, 0.93, 3.15, 0.73, 5.54, 3.74, 9.21, 1.83, 6.17, 3.54, 3.08, 8.35, 16.99, 4.75, 1.97, 1.24, 5.78, 4.13, 6.58, 2.37, 1.86, 2.82, 3.03, 2.94, 2.4, 3.53, 1.34, 8.06, 2.32, 1.62];
+  const TBASE = [26, 26, 30, 33, 30, 31, 29, 28, 24, 26, 27, 32, 24, 27, 23, 27, 28, 31, 30, 29, 25, 26, 31, 26, 32, 33, 33, 31, 23, 30, 34, 24];
+  const NORTE = new Set([1, 2, 4, 7, 9, 18, 24, 25, 27]);
+  function demo() {
+    const R = rng(20261109);
+    const end = Date.UTC(2026, 10, 2), W = 7 * MS, N = 104;
+    const canales = [["Conveniencia", 0.42, 1.08], ["Tradicional", 0.38, 1.0], ["Autoservicio", 0.2, 0.94]];
+    const prods = [["Barra 41.5 g", 0.5, 22, 41.5, 41.5], ["Chunky 40 g", 0.2, 27, 40, 40], ["Mini", 0.18, 10, 17, 15], ["Multipack 6 piezas", 0.12, 55, 102, 90]];
+    const sf = POP.map(() => 0.6 + R() * 0.7);
+    const occ = { 6: .25, 7: .2, 17: .15, 19: .2, 44: .3, 46: .2, 47: .15, 50: .2, 51: .35, 52: .3 };
+    const ventas = [], clima = [];
+    for (let i = 0; i < N; i++) {
+      const d = new Date(end - (N - 1 - i) * W); const w = key(d); const woy = isoWeek(d); const y2 = i >= N - 52;
+      let mult = 1 + (occ[woy] || 0) - (woy >= 26 && woy <= 32 ? 0.08 : 0);
+      if (weekHasPayday(d)) mult *= 1.06;
+      for (let s = 0; s < 32; s++) {
+        const amp = NORTE.has(s) ? 7 : 3;
+        const temp = TBASE[s] + amp * Math.sin(2 * Math.PI * (woy - 7) / 52) + (R() - 0.5) * 3;
+        clima.push({ d, w, estado: STATES[s], v: Math.round(temp * 10) / 10 });
+        const heat = temp > 30 ? 1 - 0.015 * (temp - 30) : 1;
+        for (const [c, cs, cp] of canales) for (const [p, ps, pr, g1, g2] of prods) {
+          const piezas = Math.round(POP[s] * 4000 * cs * ps * sf[s] * mult * heat * (y2 ? 1.02 : 1) * (0.92 + R() * 0.16));
+          const precio = pr * cp * (y2 ? 1.06 : 1);
+          const gr = y2 ? g2 : g1;
+          ventas.push({ d, w, estado: STATES[s], canal: c, producto: p, piezas, pesos: Math.round(piezas * precio), kg: piezas * gr / 1000 });
+        }
+      }
+    }
+    const tiendas = STATES.map((e, s) => ({ estado: e, tiendas: Math.round(POP[s] * 1150 * (0.8 + R() * 0.4)), actividad: "Comercio al por menor (demo)" }));
+    const poblacion = STATES.map((e, s) => ({ estado: e, poblacion: Math.round(POP[s] * 1e6), ingreso: Math.round(50000 + R() * 60000) }));
+    const gastoEstatal = [];
+    for (let s = 0; s < 32; s++) { let v = 3; for (let i = 0; i < N; i++) { v += (R() - 0.5) * 1.2; const d = new Date(end - (N - 1 - i) * W); gastoEstatal.push({ d, w: key(d), estado: STATES[s], v: Math.round(v * 10) / 10 }); } }
+    const gastoNacional = [];
+    const startD = end - (N - 1) * W;
+    for (let t = startD; t <= end + 6 * MS; t += MS) { const d = new Date(t); const m = (isPayDay(d) ? 1.12 : 1) * (1 + 0.25 * ((occ[isoWeek(d)] || 0))) * (0.95 + R() * 0.1); gastoNacional.push({ d, w: key(weekStart(d)), estado: null, v: Math.round(4200 * m) }); }
+    return { ventas, tiendas, poblacion, gastoEstatal, gastoNacional, clima };
+  }
+
+  g.Core = { STATES, SCHEMAS, TYPE_ORDER, norm, toState, parseNum, parseDate, weekStart, key, isoWeek, guessMapping, guessType, transform, volInfo, periods, decompose, weekly, seasonality, detectDaily, paydayEffect, weeklyCorrelation, potential, climate, demo, sum, groupBy };
+})(typeof window !== "undefined" ? window : globalThis);
+</script><script>
+(function () {
+  "use strict";
+  const C = window.Core;
+  const $ = s => document.querySelector(s);
+  const el = (tag, attrs, ...kids) => { const e = document.createElement(tag); if (attrs) for (const [k, v] of Object.entries(attrs)) { if (v == null) continue; if (k === "class") e.className = v; else if (k === "text") e.textContent = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v); } for (const k of kids) if (k != null) e.append(k.nodeType ? k : document.createTextNode(k)); return e; };
+  const nf0 = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 0 });
+  const nf1 = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+  const nf2 = new Intl.NumberFormat("es-MX", { maximumFractionDigits: 2, minimumFractionDigits: 2 });
+  const money = v => { const a = Math.abs(v); const s = v < 0 ? "−" : ""; if (a >= 1e9) return s + "$" + nf1.format(a / 1e9) + " mil M"; if (a >= 1e6) return s + "$" + nf1.format(a / 1e6) + " M"; if (a >= 1e4) return s + "$" + nf0.format(a / 1e3) + " mil"; return s + "$" + nf0.format(a); };
+  const qty = v => { const a = Math.abs(v); const s = v < 0 ? "−" : ""; if (a >= 1e6) return s + nf1.format(a / 1e6) + " M"; if (a >= 1e4) return s + nf0.format(a / 1e3) + " mil"; return s + nf0.format(a); };
+  const pct = (v, plus = true) => (v > 0 && plus ? "+" : v < 0 ? "−" : "") + nf1.format(Math.abs(v * 100)) + "%";
+  const fdate = t => new Date(t).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
+  const DATA = { ventas: [], tiendas: [], poblacion: [], gastoEstatal: [], gastoNacional: [], clima: [] };
+  const UNKNOWN = {}; C.TYPE_ORDER.forEach(t => UNKNOWN[t] = new Map());
+  let DEMO = false;
+  const FILTER = { canal: "*", producto: "*", estado: "*" };
+  const WEIGHTS = { tiendas: 40, poblacion: 30, poder: 30 };
+  let pending = [];
+  let current = "cargar";
+  const charts = {};
+
+  const TABS = [["cargar", "Cargar datos"], ["base", "Revisar base"], ["ventas", "Ventas y precio"], ["calendario", "Calendario"], ["potencial", "Potencial por estado"], ["clima", "Clima"], ["fuentes", "Fuentes y plantillas"]];
+
+  function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 3200); }
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  /* ---------- barra de fuentes y pestañas ---------- */
+  function renderBar() {
+    const bar = $("#bar"); bar.innerHTML = "";
+    for (const t of C.TYPE_ORDER) {
+      const s = C.SCHEMAS[t]; const n = DATA[t].length;
+      const b = el("button", { class: "seg " + (s.origin === "interno" ? "int" : "ext") + (n ? " on" : ""), title: s.label, onclick: () => show(n ? "base" : "cargar") },
+        el("b", { text: s.short }), el("span", { text: n ? qty(n) + " filas" : "Sin cargar" }));
+      bar.append(b);
+    }
+  }
+  function renderTabs() {
+    const nav = $("#tabs"); nav.innerHTML = "";
+    for (const [id, label] of TABS) nav.append(el("button", { class: "tab", role: "tab", "aria-selected": String(id === current), onclick: () => show(id), text: label }));
+    const act = nav.querySelector("[aria-selected=true]"); if (act) nav.scrollLeft = Math.max(0, act.offsetLeft - 40);
+  }
+  function show(id) {
+    current = id; renderTabs();
+    for (const [t] of TABS) $("#p-" + t).hidden = t !== id;
+    render();
+    window.scrollTo({ top: 0 });
+  }
+  function render() {
+    renderBar();
+    $("#demoBanner").hidden = !DEMO;
+    if (current === "base") renderBase();
+    if (["ventas", "calendario", "potencial", "clima"].includes(current)) renderFilters();
+    if (current === "ventas") renderVentas();
+    if (current === "calendario") renderCal();
+    if (current === "potencial") renderPot();
+    if (current === "clima") renderClima();
+    if (current === "fuentes") renderFuentes();
+  }
+
+  /* ---------- carga de archivos ---------- */
+  const drop = $("#drop");
+  ["dragenter", "dragover"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", ev => handleFiles(ev.dataTransfer.files));
+  $("#file").addEventListener("change", ev => { handleFiles(ev.target.files); ev.target.value = ""; });
+
+  async function handleFiles(list) {
+    if (typeof XLSX === "undefined") { toast("No se pudo cargar el lector de Excel. Revisa tu conexión y recarga la página."); return; }
+    for (const f of list) {
+      try {
+        const buf = await f.arrayBuffer();
+        const wb = XLSX.read(buf, { type: "array", raw: false, cellDates: false, codepage: 65001 });
+        for (const name of wb.SheetNames) {
+          const ws = wb.Sheets[name];
+          const rows = XLSX.utils.sheet_to_json(ws, { defval: null, raw: true });
+          if (!rows.length) continue;
+          const headers = Object.keys(rows[0]).length ? [...new Set(rows.slice(0, 50).flatMap(r => Object.keys(r)))] : [];
+          const type = C.guessType(headers);
+          pending.push({ id: Math.random().toString(36).slice(2), file: f.name, sheet: name, rows, headers, type, map: C.guessMapping(type, headers) });
+        }
+      } catch (e) { logLine("No se pudo leer " + f.name + ": " + (e.message || e), true); }
+    }
+    renderPending();
+  }
+
+  function renderPending() {
+    const box = $("#pending"); box.innerHTML = "";
+    for (const p of pending) {
+      const s = C.SCHEMAS[p.type];
+      const typeSel = el("select", { "aria-label": "Tipo de dato", onchange: e => { p.type = e.target.value; p.map = C.guessMapping(p.type, p.headers); renderPending(); } });
+      for (const t of C.TYPE_ORDER) typeSel.append(el("option", { value: t, text: C.SCHEMAS[t].label + (C.SCHEMAS[t].origin === "interno" ? " (interno)" : " (público)") }));
+      typeSel.value = p.type;
+      const grid = el("div", { class: "mapgrid" });
+      for (const f of s.fields) {
+        const sel = el("select", { onchange: e => { if (e.target.value) p.map[f.k] = e.target.value; else delete p.map[f.k]; } });
+        sel.append(el("option", { value: "", text: "Sin asignar" }));
+        p.headers.forEach(h => sel.append(el("option", { value: h, text: h })));
+        sel.value = p.map[f.k] || "";
+        grid.append(el("label", null, f.label, sel));
+      }
+      const prev = el("table");
+      const cols = p.headers.slice(0, 14);
+      prev.append(el("tr", null, ...cols.map(h => el("th", { text: h }))));
+      p.rows.slice(0, 5).forEach(r => prev.append(el("tr", null, ...cols.map(h => el("td", { text: r[h] == null ? "" : String(r[h]) })))));
+      const card = el("div", { class: "card" },
+        el("div", { class: "card-h" },
+          el("div", null, el("h4", { text: p.file + (p.sheet && p.sheet !== "Sheet1" ? ", hoja " + p.sheet : "") }), el("div", { class: "meta", text: nf0.format(p.rows.length) + " filas, " + p.headers.length + " columnas" })),
+          el("div", { class: "row" }, el("button", { class: "btn ghost small", onclick: () => { pending = pending.filter(x => x !== p); renderPending(); }, text: "Descartar" }), el("button", { class: "btn small", onclick: () => incorporate(p), text: "Incorporar" }))),
+        el("label", { class: "meta", style: "display:flex;flex-direction:column;gap:4px;margin-top:12px;max-width:420px" }, "Tipo de dato", typeSel),
+        el("p", { class: "note", text: s.hint }),
+        grid,
+        el("div", { class: "scroll" }, prev));
+      box.append(card);
+    }
+  }
+
+  function incorporate(p) {
+    const s = C.SCHEMAS[p.type];
+    if (p.type === "ventas" && !p.map.fecha && !(p.map.anio && p.map.semana)) { toast("Asigna la columna de fecha, o la de año y semana."); return; }
+    if (p.type === "ventas" && !p.map.pesos && !p.map.piezas && !p.map.kg) { toast("Asigna al menos pesos, piezas o kilos."); return; }
+    const reqs = { tiendas: ["estado"], poblacion: ["estado", "poblacion"], gastoEstatal: ["fecha", "estado", "valor"], gastoNacional: ["fecha", "valor"], clima: ["fecha", "estado", "temp"] }[p.type] || [];
+    const miss = reqs.filter(k => !p.map[k]);
+    if (miss.length) { toast("Falta asignar: " + miss.map(k => s.fields.find(f => f.k === k).label).join(", ")); return; }
+    if (DEMO) clearAll(false);
+    const r = C.transform(p.type, p.rows, p.map);
+    DATA[p.type] = DATA[p.type].concat(r.rows);
+    r.unknown.forEach((n, k) => UNKNOWN[p.type].set(k, (UNKNOWN[p.type].get(k) || 0) + n));
+    const drops = Object.entries(r.dropped);
+    let msg = s.label + ": " + nf0.format(r.rows.length) + " filas incorporadas de " + p.file + ".";
+    if (drops.length) msg += " Se descartaron " + drops.map(([k, n]) => nf0.format(n) + " por " + k).join(", ") + ".";
+    if (r.unknown.size) msg += " Estados no reconocidos: " + [...r.unknown.keys()].slice(0, 5).join(", ") + (r.unknown.size > 5 ? "…" : "") + ".";
+    if (p.type === "ventas" && p.map.estado == null) msg += " Sin columna de estado, el análisis por estado y de clima no estará disponible.";
+    logLine(msg, drops.length > 0);
+    pending = pending.filter(x => x !== p);
+    renderPending(); render();
+  }
+  function logLine(msg, warn) { $("#log").prepend(el("p", { class: warn ? "warn" : "", text: msg })); }
+
+  let AUTO = null, AUTO_INFO = null;
+  function resetToAuto() { C.TYPE_ORDER.forEach(t => { DATA[t] = AUTO && AUTO[t] ? AUTO[t].slice() : []; UNKNOWN[t] = new Map(); }); }
+  async function loadExternos() {
+    try {
+      const r = await fetch("data/externos.json", { cache: "no-store" });
+      if (!r.ok) return;
+      const j = await r.json();
+      AUTO = {}; const names = [];
+      for (const [t, f] of Object.entries(j.fuentes || {})) {
+        if (!C.SCHEMAS[t] || !Array.isArray(f.rows) || !f.rows.length) continue;
+        const map = {}; C.SCHEMAS[t].fields.forEach(x => { map[x.k] = x.k; });
+        AUTO[t] = C.transform(t, f.rows, map).rows;
+        if (AUTO[t].length) names.push(C.SCHEMAS[t].short + (f.fuente ? " (" + f.fuente + ")" : ""));
+      }
+      AUTO_INFO = { actualizado: j.actualizado, names };
+      if (!DEMO) resetToAuto();
+      const n = $("#autoNote");
+      if (names.length) { n.hidden = false; n.textContent = "Fuentes públicas cargadas automáticamente, actualizadas el " + new Date(j.actualizado).toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" }) + ": " + names.join(", ") + "."; }
+      render();
+    } catch (e) { /* sin datos automáticos: la página funciona con carga manual */ }
+  }
+  function clearAll(rerender = true) {
+    resetToAuto();
+    DEMO = false; FILTER.canal = FILTER.producto = FILTER.estado = "*";
+    if (rerender) render();
+  }
+  $("#loadDemo").addEventListener("click", () => {
+    clearAll(false);
+    Object.assign(DATA, C.demo()); DEMO = true;
+    logLine("Se cargaron datos ficticios de demostración en las seis fuentes. Al quitarlos, o al incorporar tu primer archivo, se restauran las fuentes públicas automáticas.", true);
+    show("ventas");
+  });
+  $("#clearDemo").addEventListener("click", () => { clearAll(); $("#log").innerHTML = ""; show("cargar"); });
+
+  /* ---------- revisar base ---------- */
+  function renderBase() {
+    const out = $("#baseOut"); out.innerHTML = "";
+    const t = el("table");
+    t.append(el("tr", null, ...["Fuente", "Filas", "Periodo", "Estados", "Detalle", ""].map((h, i) => el("th", { class: i === 1 ? "n" : null, text: h }))));
+    let any = false;
+    for (const k of C.TYPE_ORDER) {
+      const rows = DATA[k]; if (!rows.length) continue; any = true;
+      let periodo = "No aplica", detalle = "";
+      if (rows[0].d) { let mn = Infinity, mx = 0; for (const r of rows) { const v = r.d.getTime(); if (v < mn) mn = v; if (v > mx) mx = v; } periodo = fdate(mn) + " a " + fdate(mx); }
+      const est = new Set(rows.map(r => r.estado).filter(Boolean)).size;
+      if (k === "ventas") { const vi = C.volInfo(rows); detalle = new Set(rows.map(r => r.canal)).size + " canales, " + new Set(rows.map(r => r.producto)).size + " productos, " + (C.detectDaily(rows) ? "diaria" : "semanal") + ", volumen en " + vi.label.toLowerCase() + (vi.partial ? " (incompleto)" : ""); }
+      if (k === "gastoNacional" || k === "clima" || k === "gastoEstatal") detalle = C.detectDaily(rows) ? "Serie diaria" : "Serie semanal o mensual";
+      if (k === "tiendas") detalle = nf0.format(C.sum(rows, r => r.tiendas)) + " tiendas";
+      if (k === "poblacion") detalle = rows.some(r => r.ingreso != null) ? "Con ingreso" : "Sin ingreso";
+      t.append(el("tr", null, el("td", { text: C.SCHEMAS[k].label }), el("td", { class: "n", text: nf0.format(rows.length) }), el("td", { text: periodo }), el("td", { text: est ? est + " de 32" : "Nacional" }), el("td", { text: detalle }),
+        el("td", null, el("button", { class: "btn ghost small", onclick: () => { DATA[k] = []; UNKNOWN[k] = new Map(); if (!C.TYPE_ORDER.some(x => DATA[x].length)) DEMO = false; render(); }, text: "Vaciar" }))));
+    }
+    if (!any) { out.append(emptyState("Todavía no hay datos cargados.")); return; }
+    out.append(el("div", { class: "scroll" }, t));
+    const unk = C.TYPE_ORDER.filter(k => UNKNOWN[k].size);
+    if (unk.length) {
+      out.append(el("h3", { text: "Estados que no se reconocieron" }), el("p", { class: "note", text: "Estas filas se descartaron. Corrige el nombre en el archivo original y vuelve a subirlo." }));
+      const u = el("table"); u.append(el("tr", null, el("th", { text: "Fuente" }), el("th", { text: "Valor en el archivo" }), el("th", { class: "n", text: "Filas" })));
+      unk.forEach(k => UNKNOWN[k].forEach((n, v) => u.append(el("tr", null, el("td", { text: C.SCHEMAS[k].short }), el("td", { text: v }), el("td", { class: "n", text: nf0.format(n) })))));
+      out.append(el("div", { class: "scroll" }, u));
+    }
+  }
+  function emptyState(msg, needs) {
+    return el("div", { class: "empty" }, el("p", { text: msg }), el("button", { class: "btn small", onclick: () => show("cargar"), text: needs || "Ir a cargar datos" }));
+  }
+
+  /* ---------- filtros ---------- */
+  function renderFilters() {
+    const box = document.querySelector("#p-" + current + " [data-filters]"); box.innerHTML = "";
+    const v = DATA.ventas; if (!v.length) { box.hidden = true; return; } box.hidden = false;
+    const noEstado = box.hasAttribute("data-noestado");
+    const dims = [["canal", "Canal"], ["producto", "Producto"]]; if (!noEstado) dims.push(["estado", "Estado"]);
+    for (const [k, l] of dims) {
+      const vals = [...new Set(v.map(r => r[k]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+      if (k === "estado" && !vals.length) continue;
+      const sel = el("select", { onchange: e => { FILTER[k] = e.target.value; render(); } });
+      sel.append(el("option", { value: "*", text: "Todos" })); vals.forEach(x => sel.append(el("option", { value: x, text: x })));
+      sel.value = vals.includes(FILTER[k]) ? FILTER[k] : "*";
+      box.append(el("label", null, l, sel));
+    }
+  }
+  function filtered(skipEstado) { return DATA.ventas.filter(r => (FILTER.canal === "*" || r.canal === FILTER.canal) && (FILTER.producto === "*" || r.producto === FILTER.producto) && (skipEstado || FILTER.estado === "*" || r.estado === FILTER.estado)); }
+
+  /* ---------- gráficas ---------- */
+  function chart(id, holder, cfg, h) {
+    if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+    const wrap = el("div", { class: "chart", style: h ? "height:" + h + "px" : null }); const cv = el("canvas", { role: "img", "aria-label": cfg.aria || "" });
+    wrap.append(cv); holder.append(wrap);
+    if (typeof Chart === "undefined") { wrap.replaceChildren(el("p", { class: "note", text: "No se pudo cargar la librería de gráficas. Revisa tu conexión y recarga la página." })); return; }
+    Chart.defaults.font.family = "Archivo, system-ui, sans-serif"; Chart.defaults.color = css("--muted"); Chart.defaults.borderColor = css("--line");
+    cfg.options = Object.assign({ responsive: true, maintainAspectRatio: false, animation: false }, cfg.options || {});
+    charts[id] = new Chart(cv, cfg);
+  }
+
+  /* ---------- ventas y precio ---------- */
+  function renderVentas() {
+    const out = $("#ventasOut"); out.innerHTML = "";
+    const rows = filtered(); if (!DATA.ventas.length) { out.append(emptyState("Para este análisis necesitas cargar ventas internas.")); return; }
+    if (!rows.length) { out.append(el("p", { class: "note", text: "No hay ventas con estos filtros." })); return; }
+    const vi = C.volInfo(rows), vk = vi.key;
+    const per = C.periods(rows);
+    const s1 = { p: C.sum(per.cur, r => r.pesos), v: C.sum(per.cur, r => r[vk]) }, s0 = { p: C.sum(per.prev, r => r.pesos), v: C.sum(per.prev, r => r[vk]) };
+    const pr1 = s1.v ? s1.p / s1.v * vi.priceMult : null, pr0 = s0.v ? s0.p / s0.v * vi.priceMult : null;
+    out.append(el("p", { class: "meta", text: per.label + (per.curRange ? ". Periodo actual: " + fdate(per.curRange[0]) + " a " + fdate(per.curRange[1] + 6 * 864e5) + "." : "") }));
+    if (vi.partial) out.append(el("p", { class: "note", text: "Algunas filas no tienen " + vi.label.toLowerCase() + ". Agrega gramos por pieza o kilos en el archivo para que el volumen sea completo." }));
+    const k = (l, v, d) => el("div", { class: "kpi" }, el("div", { class: "l", text: l }), el("div", { class: "v", text: v }), d == null ? el("div", { class: "d meta", text: "Sin periodo de comparación" }) : el("div", { class: "d " + (d >= 0 ? "up" : "down"), text: pct(d) + " contra el periodo anterior" }));
+    out.append(el("div", { class: "kpis" },
+      k("Ventas en pesos", money(s1.p), s0.p ? s1.p / s0.p - 1 : null),
+      k(vi.label, qty(s1.v) + " " + vi.unit, s0.v ? s1.v / s0.v - 1 : null),
+      k(vi.priceLabel, pr1 != null ? "$" + nf2.format(pr1) : "Sin dato", pr0 ? pr1 / pr0 - 1 : null)));
+    const dc = per.prev.length ? C.decompose(per.cur, per.prev, vk) : null;
+    if (dc) {
+      out.append(el("h3", { text: "De dónde viene el cambio en pesos" }));
+      const g = dc.final / dc.base - 1;
+      const pts = x => (x / dc.base * 100);
+      const rd = el("p", { class: "read" });
+      rd.append("Las ventas en pesos cambiaron ", el("strong", { text: pct(g) }), ". De eso, ", el("strong", { text: (pts(dc.volumen) >= 0 ? "+" : "−") + nf1.format(Math.abs(pts(dc.volumen))) + " puntos" }), " vienen de volumen, ", el("strong", { text: (pts(dc.precio) >= 0 ? "+" : "−") + nf1.format(Math.abs(pts(dc.precio))) + " puntos" }), " de precio por " + (vk === "kg" ? "kilo (incluye cambios de gramaje)" : "pieza") + " y ", el("strong", { text: (pts(dc.mezcla) >= 0 ? "+" : "−") + nf1.format(Math.abs(pts(dc.mezcla))) + " puntos" }), " de la mezcla de productos.");
+      out.append(rd);
+      const steps = [["Periodo anterior", 0, dc.base, "t"], ["Volumen", dc.base, dc.base + dc.volumen], ["Precio", dc.base + dc.volumen, dc.base + dc.volumen + dc.precio], ["Mezcla", dc.base + dc.volumen + dc.precio, dc.final], ["Periodo actual", 0, dc.final, "t"]];
+      const col = s => s[3] ? css("--cocoa") : (s[2] >= s[1] ? css("--good") : css("--brand"));
+      const lo = Math.min(...steps.filter(s => !s[3]).map(s => Math.min(s[1], s[2])), dc.base, dc.final);
+      const hi = Math.max(...steps.map(s => Math.max(s[1], s[2])));
+      const pad = (hi - lo) * 0.6 || hi * 0.05;
+      chart("wf", out, {
+        type: "bar", aria: "Cascada de la variación de ventas en pesos",
+        data: { labels: steps.map(s => s[0]), datasets: [{ data: steps.map(s => [s[3] ? Math.max(0, lo - pad) : s[1], s[2]]), backgroundColor: steps.map(col), borderRadius: 4, barPercentage: .62 }] },
+        options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => { const s = steps[c.dataIndex]; return s[3] ? money(s[2]) : (s[2] - s[1] >= 0 ? "+" : "") + money(s[2] - s[1]); } } } }, scales: { y: { min: Math.max(0, lo - pad), ticks: { callback: v => money(v) } }, x: { grid: { display: false } } } }
+      });
+    }
+    out.append(el("h3", { text: "Ventas por semana" }));
+    const wk = C.weekly(rows, vk);
+    chart("trend", out, {
+      type: "line", aria: "Ventas semanales en pesos y volumen",
+      data: { labels: wk.map(o => o.w), datasets: [
+        { label: "Pesos", data: wk.map(o => o.pesos), borderColor: css("--brand"), backgroundColor: css("--brand"), yAxisID: "y", pointRadius: 0, borderWidth: 2, tension: .25 },
+        { label: vi.label, data: wk.map(o => o.vol), borderColor: css("--cocoa"), backgroundColor: css("--cocoa"), yAxisID: "y2", pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: .25 }] },
+      options: { interaction: { mode: "index", intersect: false }, plugins: { legend: { position: "bottom", labels: { boxWidth: 12 } }, tooltip: { callbacks: { title: c => "Semana del " + fdate(c[0].label), label: c => c.dataset.label + ": " + (c.datasetIndex ? qty(c.parsed.y) + " " + vi.unit : money(c.parsed.y)) } } },
+        scales: { x: { ticks: { maxTicksLimit: 8, callback: function (v) { return fdate(this.getLabelForValue(v)); } }, grid: { display: false } }, y: { ticks: { callback: v => money(v) } }, y2: { position: "right", grid: { display: false }, ticks: { callback: v => qty(v) } } } }
+    });
+    out.append(el("h3", { text: "Por canal y producto" }));
+    const tb = el("table"); tb.append(el("tr", null, ...["", "Pesos", "Cambio en pesos", vi.label, "Cambio en volumen", vi.priceLabel, "Cambio en precio"].map((h, i) => el("th", { class: i ? "n" : null, text: h }))));
+    const addRows = (dim) => {
+      const g1 = C.groupBy(per.cur, r => r[dim]), g0 = C.groupBy(per.prev, r => r[dim]);
+      [...g1.keys()].sort((a, b) => C.sum(g1.get(b), r => r.pesos) - C.sum(g1.get(a), r => r.pesos)).forEach(key => {
+        const a = g1.get(key), b = g0.get(key) || [];
+        const p1 = C.sum(a, r => r.pesos), v1 = C.sum(a, r => r[vk]), p0 = C.sum(b, r => r.pesos), v0 = C.sum(b, r => r[vk]);
+        const c = (x, y) => y ? el("td", { class: "n " + (x / y - 1 >= 0 ? "up" : "down"), text: pct(x / y - 1) }) : el("td", { class: "n meta", text: "Nuevo" });
+        tb.append(el("tr", null, el("td", { text: key }), el("td", { class: "n", text: money(p1) }), c(p1, p0), el("td", { class: "n", text: qty(v1) }), c(v1, v0), el("td", { class: "n", text: v1 ? "$" + nf2.format(p1 / v1 * vi.priceMult) : "" }), v0 && v1 ? c(p1 / v1, p0 / v0) : el("td")));
+      });
+    };
+    if (new Set(rows.map(r => r.canal)).size > 1) { tb.append(el("tr", null, el("td", { colspan: 7, style: "font-weight:700;color:var(--ink)", text: "Canales" }))); addRows("canal"); }
+    if (new Set(rows.map(r => r.producto)).size > 1) { tb.append(el("tr", null, el("td", { colspan: 7, style: "font-weight:700;color:var(--ink)", text: "Productos" }))); addRows("producto"); }
+    out.append(el("div", { class: "scroll" }, tb));
+  }
+
+  /* ---------- calendario ---------- */
+  const OCC = [["San Valentín", [6, 7]], ["Día del Niño", [17]], ["Día de las Madres", [19]], ["Regreso a clases", [34, 35]], ["Día de Muertos", [44]], ["Buen Fin", [46, 47]], ["Navidad", [51, 52]]];
+  function renderCal() {
+    const out = $("#calOut"); out.innerHTML = "";
+    if (!DATA.ventas.length) { out.append(emptyState("Para este análisis necesitas cargar ventas internas.")); return; }
+    const rows = filtered(); if (!rows.length) { out.append(el("p", { class: "note", text: "No hay ventas con estos filtros." })); return; }
+    const vi = C.volInfo(rows), vk = vi.key;
+    const se = C.seasonality(rows, vk);
+    out.append(el("h3", { text: "Semanas del año" }));
+    if (!se) out.append(el("p", { class: "note", text: "Hacen falta al menos 20 semanas de historia para calcular la estacionalidad." }));
+    else {
+      const occW = new Set(OCC.flatMap(o => o[1]));
+      out.append(el("p", { class: "note", text: "Índice de " + vi.label.toLowerCase() + " por semana del año: 100 es una semana promedio. Las barras rojas son semanas de ocasión. Con " + Math.max(...se.map(s => s.n)) + " año(s) de historia, una sola semana atípica pesa mucho." }));
+      chart("season", out, { type: "bar", aria: "Índice de estacionalidad por semana del año",
+        data: { labels: se.map(s => s.semana), datasets: [{ data: se.map(s => s.indice), backgroundColor: se.map(s => occW.has(s.semana) ? css("--brand") : css("--cocoa-soft")), borderRadius: 2, barPercentage: .9, categoryPercentage: .95 }] },
+        options: { plugins: { legend: { display: false }, tooltip: { callbacks: { title: c => "Semana " + c[0].label, label: c => "Índice " + nf0.format(c.parsed.y) } } }, scales: { y: { suggestedMin: 60, ticks: { callback: v => nf0.format(v) } }, x: { grid: { display: false }, ticks: { maxTicksLimit: 14 } } } } });
+      const t = el("table"); t.append(el("tr", null, el("th", { text: "Ocasión" }), el("th", { text: "Semanas" }), el("th", { class: "n", text: "Índice" })));
+      OCC.forEach(([n, ws]) => { const v = se.filter(s => ws.includes(s.semana)); if (!v.length) return; const idx = v.reduce((a, s) => a + s.indice, 0) / v.length; t.append(el("tr", null, el("td", { text: n }), el("td", { text: ws.join(" y ") }), el("td", { class: "n " + (idx >= 100 ? "up" : "down"), text: nf0.format(idx) }))); });
+      out.append(el("div", { class: "scroll", style: "margin-top:12px" }, t));
+      out.append(el("p", { class: "note", text: "Las semanas de cada ocasión son aproximadas y cambian de un año a otro." }));
+    }
+    out.append(el("h3", null, "Efecto de la quincena", el("span", { class: "tag assoc", text: "Asociación observada" })));
+    const daily = C.detectDaily(rows);
+    const pe = C.paydayEffect(rows.map(r => ({ d: r.d, w: r.w, v: r[vk] || 0 })), daily);
+    if (!pe) out.append(el("p", { class: "note", text: "Hace falta más historia (al menos 20 semanas o 60 días) para medirlo." }));
+    else {
+      const rd = el("p", { class: "read" });
+      rd.append(daily ? "En los días de pago (15, 16 y del último día del mes al día 2), la venta está " : "Las semanas que incluyen un día de pago (15 o fin de mes) venden ", el("strong", { text: pct(Math.abs(pe.lift), false) + (pe.lift >= 0 ? " por arriba" : " por debajo") }), daily ? " del resto de los días, ya descontada la tendencia." : " de las demás semanas, ya descontada la tendencia de las semanas vecinas.");
+      out.append(rd);
+      if (daily) chart("dom", out, { type: "bar", aria: "Índice de ventas por día del mes", data: { labels: pe.dom.map(d => d.dia), datasets: [{ data: pe.dom.map(d => d.indice), backgroundColor: pe.dom.map(d => [1, 2, 15, 16, 30, 31].includes(d.dia) ? css("--brand") : css("--cocoa-soft")), borderRadius: 2 }] }, options: { plugins: { legend: { display: false }, tooltip: { callbacks: { title: c => "Día " + c[0].label, label: c => "Índice " + nf0.format(c.parsed.y) } } }, scales: { y: { suggestedMin: 85 }, x: { grid: { display: false } } } } }, 260);
+      out.append(el("p", { class: "note", text: "Basado en " + pe.nPay + (daily ? " días" : " semanas") + " con pago y " + pe.nRest + " sin pago. Coincide en el tiempo con la quincena; no prueba que el pago sea la causa. Para confirmarlo se necesita un experimento o datos diarios de varias cadenas." }));
+    }
+    if (DATA.gastoNacional.length) {
+      out.append(el("h3", null, "Comparación con el gasto con tarjeta nacional", el("span", { class: "tag assoc", text: "Asociación observada" })));
+      const gd = C.detectDaily(DATA.gastoNacional);
+      const pg = C.paydayEffect(DATA.gastoNacional, gd);
+      const cor = C.weeklyCorrelation(rows, vk, DATA.gastoNacional);
+      const rd = el("p", { class: "read" });
+      if (pg) rd.append("En el gasto con tarjeta de Banxico, " + (gd ? "los días de pago" : "las semanas con día de pago") + " están ", el("strong", { text: pct(Math.abs(pg.lift), false) + (pg.lift >= 0 ? " por arriba" : " por debajo") }), " del resto. ");
+      if (cor) rd.append("Semana a semana, las subidas y bajadas de la venta y del gasto con tarjeta tienen una correlación de ", el("strong", { text: nf2.format(cor.r) }), " (" + cor.n + " semanas; 1 sería moverse exactamente igual).");
+      else rd.append("No hay suficientes semanas en común entre ambas series para compararlas.");
+      out.append(rd);
+    }
+  }
+
+  /* ---------- potencial ---------- */
+  let lastPot = null;
+  function renderPot() {
+    const out = $("#potOut"); out.innerHTML = "";
+    if (!DATA.ventas.length) { out.append(emptyState("Necesitas ventas internas con columna de estado, más tiendas del DENUE o población.")); return; }
+    if (!DATA.ventas.some(r => r.estado)) { out.append(emptyState("Las ventas cargadas no tienen columna de estado. Vuelve a subirlas asignando el estado.")); return; }
+    if (!DATA.tiendas.length && !DATA.poblacion.length) { out.append(emptyState("Carga tiendas por estado (DENUE) o población (Censo, ENIGH) para estimar el potencial.", "Cargar fuentes públicas")); return; }
+    const rows = filtered(true); const vi = C.volInfo(rows);
+    const pot0 = C.potential(rows, vi.key, DATA.tiendas, DATA.poblacion, { tiendas: 1, poblacion: 1, poder: 1 });
+    const labels = { tiendas: "Tiendas (DENUE)", poblacion: "Población", poder: "Poder de compra (población × ingreso)" };
+    const sl = el("div", { class: "sliders" });
+    pot0.available.forEach(k => {
+      const val = el("strong", { text: WEIGHTS[k] + "" });
+      const r = el("input", { type: "range", min: 0, max: 100, step: 5, value: WEIGHTS[k], "aria-label": "Peso de " + labels[k], oninput: e => { WEIGHTS[k] = +e.target.value; val.textContent = e.target.value; }, onchange: () => renderPot() });
+      sl.append(el("label", null, el("span", null, labels[k] + ": ", val), r));
+    });
+    out.append(el("h3", { text: "Cómo se calcula el potencial" }), el("p", { class: "note", text: "Mueve los pesos para decidir cuánto cuenta cada factor. Los pesos se reparten en proporción; con todo en cero no hay potencial." }), sl);
+    const pot = C.potential(rows, vi.key, DATA.tiendas, DATA.poblacion, WEIGHTS); lastPot = pot;
+    if (!pot.rows.length) { out.append(el("p", { class: "note", text: "Asigna peso a al menos un factor." })); return; }
+    const under = pot.rows.filter(r => r.indice < 85);
+    const tot = under.reduce((s, r) => s + r.oportunidad, 0);
+    const rd = el("p", { class: "read" });
+    rd.append(el("strong", { text: under.length + " estados" }), " venden menos del 85% de lo que su tamaño sugiere. Si llegaran a su participación potencial, sumarían cerca de ", el("strong", { text: qty(tot) + " " + vi.unit }), " en " + pot.periodLabel + " (" + pct(tot / pot.totalVol, false) + " del volumen actual).");
+    out.append(rd);
+    if (pot.excluded.length) out.append(el("p", { class: "note", text: "Sin dato en alguna fuente, se excluyeron: " + pot.excluded.join(", ") + "." }));
+    const sorted = [...pot.rows].sort((a, b) => a.indice - b.indice);
+    chart("pot", out, { type: "bar", aria: "Índice de venta contra potencial por estado",
+      data: { labels: sorted.map(r => r.estado), datasets: [{ data: sorted.map(r => r.indice), backgroundColor: sorted.map(r => r.indice < 85 ? css("--brand") : r.indice > 115 ? css("--good") : css("--cocoa-soft")), borderRadius: 3, barPercentage: .8 }] },
+      options: { indexAxis: "y", plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => "Índice " + nf0.format(c.parsed.x) } } }, scales: { x: { suggestedMin: 0, ticks: { callback: v => nf0.format(v) } }, y: { grid: { display: false }, ticks: { autoSkip: false, font: { size: 11 } } } } } }, Math.max(260, sorted.length * 22 + 40));
+    const gmap = new Map(); if (DATA.gastoEstatal.length) { const last = new Map(); DATA.gastoEstatal.forEach(r => { const p = last.get(r.estado); if (!p || r.d > p.d) last.set(r.estado, r); }); last.forEach((r, k) => gmap.set(k, r)); }
+    out.append(el("h3", { text: "Detalle por estado" }));
+    const t = el("table"); const hs = ["Estado", vi.label, "Participación en venta", "Participación potencial", "Índice", "Oportunidad (" + vi.unit + ")"]; if (gmap.size) hs.push("Gasto con tarjeta, último dato");
+    t.append(el("tr", null, ...hs.map((h, i) => el("th", { class: i ? "n" : null, text: h }))));
+    pot.rows.forEach(r => { const g = gmap.get(r.estado); const tr = el("tr", null, el("td", { text: r.estado }), el("td", { class: "n", text: qty(r.volumen) }), el("td", { class: "n", text: nf1.format(r.participacion * 100) + "%" }), el("td", { class: "n", text: nf1.format(r.potencial * 100) + "%" }), el("td", { class: "n " + (r.indice < 85 ? "down" : r.indice > 115 ? "up" : ""), text: nf0.format(r.indice) }), el("td", { class: "n", text: r.oportunidad ? qty(r.oportunidad) : "" })); if (gmap.size) tr.append(el("td", { class: "n", text: g ? nf1.format(g.v) + " (" + fdate(g.d) + ")" : "" })); t.append(tr); });
+    out.append(el("div", { class: "scroll" }, t));
+    out.append(el("p", { class: "note", text: "Es un índice exploratorio: supone que la venta debería repartirse como los factores elegidos. Un índice bajo puede deberse a cobertura, precio, competencia local o gustos regionales; sirve para decidir dónde investigar o probar primero, no para concluir la causa." }));
+  }
+
+  /* ---------- clima ---------- */
+  function renderClima() {
+    const out = $("#climaOut"); out.innerHTML = "";
+    if (!DATA.ventas.length || !DATA.ventas.some(r => r.estado)) { out.append(emptyState("Necesitas ventas internas con columna de estado.")); return; }
+    if (!DATA.clima.length) { out.append(emptyState("Carga la temperatura por estado del SMN para este análisis.", "Cargar temperatura")); return; }
+    const rows = filtered(); const vi = C.volInfo(rows);
+    const cl = C.climate(rows, vi.key, DATA.clima);
+    if (!cl || !cl.fit) { out.append(el("p", { class: "note", text: "No hay suficientes semanas y estados en común entre ventas y temperatura (se necesitan al menos 30 combinaciones)." })); return; }
+    out.append(el("h3", null, "Relación entre calor y ventas", el("span", { class: "tag assoc", text: "Asociación observada" })));
+    const rd = el("p", { class: "read" });
+    rd.append("Cuando un estado está 1 °C más caliente de lo normal para él, comparado con el resto del país esa semana, su venta en " + vi.label.toLowerCase() + " cambia en promedio ", el("strong", { text: pct(cl.fit.slope) }), ". Calculado con " + nf0.format(cl.fit.n) + " combinaciones de estado y semana (" + cl.states + " estados, " + cl.weeks + " semanas).");
+    out.append(rd);
+    const two = el("div", { class: "two" }); out.append(two);
+    const a = el("div"), b = el("div"); two.append(a, b);
+    a.append(el("p", { class: "note", text: "Cada punto es un estado en una semana. Eje horizontal: grados por arriba o por debajo de lo normal. Eje vertical: venta por arriba o por debajo de lo esperado." }));
+    const sample = cl.pts.length > 2500 ? cl.pts.filter((_, i) => i % Math.ceil(cl.pts.length / 2500) === 0) : cl.pts;
+    chart("scatter", a, { type: "scatter", aria: "Dispersión de anomalía de temperatura contra anomalía de ventas", data: { datasets: [{ data: sample.map(p => ({ x: p.x, y: p.y * 100, e: p.estado, w: p.w })), pointRadius: 2, backgroundColor: css("--ext") }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => c.raw.e + ", semana del " + fdate(c.raw.w) + ": " + (c.raw.x >= 0 ? "+" : "") + nf1.format(c.raw.x) + " °C, venta " + pct(c.raw.y / 100) } } }, scales: { x: { title: { display: true, text: "°C contra lo normal" } }, y: { title: { display: true, text: "% contra lo esperado" }, ticks: { callback: v => nf0.format(v) + "%" } } } } });
+    b.append(el("p", { class: "note", text: "Venta contra lo esperado según la temperatura máxima de la semana." }));
+    const bk = cl.buckets.filter(x => x.n >= 10);
+    chart("buckets", b, { type: "bar", aria: "Venta contra lo esperado por rango de temperatura", data: { labels: bk.map(x => x.label), datasets: [{ data: bk.map(x => x.y * 100), backgroundColor: bk.map(x => x.y < 0 ? css("--brand") : css("--good")), borderRadius: 3 }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => pct(c.parsed.y / 100) + " (" + bk[c.dataIndex].n + " semanas)" } } }, scales: { y: { ticks: { callback: v => nf1.format(v) + "%" } }, x: { grid: { display: false } } } } });
+    out.append(el("p", { class: "note", text: "La correlación es de " + nf2.format(cl.fit.r) + ". El calor puede afectar la venta por gusto del consumidor, por chocolate dañado en tienda o porque la tienda reduce surtido; este análisis no distingue entre esas causas." }));
+  }
+
+  /* ---------- fuentes ---------- */
+  const SOURCES = [
+    ["int", "Ventas internas", "SAP (sell-in), NielsenIQ (sell-out del mercado), Retail Link de Walmart, OXXO y otras cadenas (scan data).", "Exporta a Excel por semana, con estado, canal, producto, piezas, pesos y gramaje.", null],
+    ["ext", "Tiendas por estado: INEGI DENUE", "Ubicación y actividad de cada establecimiento. Útil para medir el universo de tiendas de abarrotes y conveniencia.", "En la descarga masiva del DENUE elige comercio al por menor; sube el CSV tal cual, una fila por tienda.", "https://www.inegi.org.mx/app/descarga/?ti=6"],
+    ["ext", "Población: Censo 2020", "Población por estado, municipio y colonia.", "Descarga los principales resultados por entidad; basta con estado y población total.", "https://www.inegi.org.mx/programas/ccpv/2020/"],
+    ["ext", "Ingreso y gasto: ENIGH 2024", "Ingreso de los hogares por estado. Bienal.", "Usa el tabulado de ingreso corriente promedio por hogar por entidad y pégalo en la plantilla de población.", "https://www.inegi.org.mx/programas/enigh/nc/2024/"],
+    ["ext", "Gasto con tarjeta por estado: BBVA Research", "Consumo con tarjetas BBVA por estado y categoría, casi en tiempo real.", "En el portal, descarga el CSV de consumo por entidad federativa.", "https://bigdata.bbvaresearch.com/es/regional-provincial-urbano/mexico/consumo-tarjeta/entidades-federativas/"],
+    ["ext", "Gasto con tarjeta nacional: Banxico", "Operaciones con tarjeta por giro comercial (cuadro CF958). Diario, nacional.", "Abre el cuadro en el SIE, elige la serie de ventas al detalle y exporta a Excel.", "https://www.banxico.org.mx/SieInternet/consultarDirectorioInternetAction.do?accion=consultarCuadro&idCuadro=CF958&locale=es"],
+    ["ext", "Temperatura: SMN (CONAGUA)", "Temperatura máxima diaria por estación meteorológica.", "Promedia las estaciones de cada estado por día o por semana y sube fecha, estado y temperatura máxima.", "https://smn.conagua.gob.mx/es/climatologia/informacion-climatologica/informacion-estadistica-climatologica"],
+    ["ext", "Indicadores económicos: INEGI BIE", "Inflación del chocolate, confianza del consumidor y ventas minoristas.", "Útil para contexto; aún no forma parte de los análisis de esta página.", "https://www.inegi.org.mx/app/indicadores/"]
+  ];
+  function renderFuentes() {
+    const box = $("#srcList"); box.innerHTML = "";
+    SOURCES.forEach(([o, t, w, how, url]) => box.append(el("article", { class: o }, el("h4", { text: t }), el("p", { text: w }), el("p", { text: how }), url ? el("p", null, el("a", { href: url, target: "_blank", rel: "noopener", text: "Abrir la fuente" })) : null)));
+  }
+  async function save(filename, wb) {
+    const buf = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    try {
+      const d = window.claude && window.claude.use ? await window.claude.use("downloads") : null;
+      if (!d) { const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })); const a = el("a", { href: url, download: filename }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 3000); return; }
+      await d.save({ filename, data: new Blob([buf]) });
+    } catch (e) { if (e && e.code !== "declined") toast("No se pudo descargar el archivo."); }
+  }
+  $("#dlTemplates").addEventListener("click", () => {
+    if (typeof XLSX === "undefined") return toast("No se pudo cargar el lector de Excel.");
+    const wb = XLSX.utils.book_new();
+    const ins = [["Plantillas del laboratorio de demanda"], [""], ["Cada hoja es un tipo de dato. Puedes usar tus propios nombres de columna: al subir el archivo se asignan."], ["Fechas: AAAA-MM-DD o DD/MM/AAAA. Estados: nombre completo, abreviatura o clave INEGI (1 a 32)."], ["Las filas de ejemplo son ficticias: bórralas antes de usar la plantilla."]];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ins), "Instrucciones");
+    const ex = {
+      ventas: [["Fecha", "Estado", "Canal", "Producto", "Piezas", "Venta pesos", "Gramos por pieza"], ["2026-01-05", "Jalisco", "Conveniencia", "Barra 41.5 g", 1200, 28800, 41.5], ["2026-01-05", "Nuevo León", "Tradicional", "Barra 41.5 g", 900, 19800, 41.5]],
+      tiendas: [["Estado", "Tiendas"], ["Jalisco", 45000], ["Nuevo León", 30000]],
+      poblacion: [["Estado", "Población", "Ingreso promedio por hogar"], ["Jalisco", 8350000, 70000], ["Nuevo León", 5780000, 85000]],
+      gastoEstatal: [["Fecha", "Estado", "Valor"], ["2026-01-05", "Jalisco", 3.2], ["2026-01-05", "Nuevo León", 4.1]],
+      gastoNacional: [["Fecha", "Monto"], ["2026-01-05", 4200], ["2026-01-06", 4150]],
+      clima: [["Fecha", "Estado", "Temperatura máxima"], ["2026-01-05", "Jalisco", 26.4], ["2026-01-05", "Nuevo León", 22.1]]
+    };
+    C.TYPE_ORDER.forEach(t => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ex[t]), C.SCHEMAS[t].short.slice(0, 31)));
+    save("plantillas_laboratorio_demanda.xlsx", wb);
+  });
+  $("#dlExport").addEventListener("click", () => {
+    if (!DATA.ventas.length) return toast("Primero carga ventas.");
+    const m = new Map();
+    for (const r of DATA.ventas) { const k = [r.w, r.estado || "", r.canal, r.producto].join("|"); const o = m.get(k) || { Semana: r.w, Estado: r.estado || "", Canal: r.canal, Producto: r.producto, Pesos: 0, Piezas: 0, Kilos: 0 }; o.Pesos += r.pesos || 0; o.Piezas += r.piezas || 0; o.Kilos += r.kg || 0; m.set(k, o); }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([...m.values()].sort((a, b) => a.Semana < b.Semana ? -1 : 1)), "Ventas semanal");
+    if (lastPot && lastPot.rows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(lastPot.rows.map(r => ({ Estado: r.estado, Volumen: r.volumen, "Participación venta": r.participacion, "Participación potencial": r.potencial, Índice: r.indice, Oportunidad: r.oportunidad }))), "Potencial");
+    save((DEMO ? "demo_" : "") + "base_consolidada.xlsx", wb);
+  });
+
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => render());
+  let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => Object.values(charts).forEach(c => c.resize()), 150); });
+  renderTabs(); render(); loadExternos();
+})();
+</script></body></html>
