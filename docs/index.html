@@ -122,6 +122,19 @@ input[type=range]{accent-color:var(--brand)}
 .src a{color:var(--ink)}
 .note{font-size:.84rem;color:var(--muted);max-width:75ch}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 18px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:.9rem;z-index:20;max-width:90vw}
+.fc-controls{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;margin:0 0 18px}
+.fc-controls label{display:flex;flex-direction:column;gap:3px;font-size:.78rem;color:var(--muted)}
+.checks{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 18px}
+.chk{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1.5px solid var(--line);border-radius:999px;background:var(--surface);font-size:.88rem;cursor:pointer;user-select:none}
+.chk input{accent-color:var(--brand);width:16px;height:16px;margin:0}
+.chk.on{border-color:var(--brand)}
+.chk.off{opacity:.5;cursor:not-allowed}
+.scen input[type=number]{width:84px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);text-align:right;font-variant-numeric:tabular-nums}
+.scen th.c{text-align:center}
+.scen td.c{text-align:center}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:0}
+.tag.sup{border-color:var(--cocoa);color:var(--cocoa)}
+.tag.est{border-color:var(--good);color:var(--good)}
 @media (max-width:820px){
   .mast-grid{grid-template-columns:1fr}
   .bar{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -193,6 +206,13 @@ input[type=range]{accent-color:var(--brand)}
   <p class="sub">Cada estado se compara contra su propio promedio y contra el resto del país en la misma semana, para que Navidad o el Buen Fin no se confundan con el efecto del calor.</p>
   <div class="filters" data-filters></div>
   <div id="climaOut"></div>
+</section>
+
+<section id="p-pronostico" hidden>
+  <h2>Pronóstico de demanda</h2>
+  <p class="sub">Proyecta la venta semanal con su estacionalidad y tendencia, y sobre esa base suma o resta el efecto de cada variable según el escenario. Activa o desactiva cada variable para ver cuánto pesa.</p>
+  <div class="filters" data-filters></div>
+  <div id="fcOut"></div>
 </section>
 
 <section id="p-fuentes" hidden>
@@ -590,7 +610,7 @@ input[type=range]{accent-color:var(--brand)}
       return { estado: st, volumen: vol.get(st), participacion: share, potencial: pot, indice: pot ? share / pot * 100 : null, oportunidad: Math.max(0, (pot - share) * totalVol) };
     });
     rows.sort((a, b) => b.oportunidad - a.oportunidad || a.indice - b.indice);
-    return { available: Object.keys(comps), rows, excluded, totalVol, periodLabel: per && per.prev.length ? "últimas " + (per.label.startsWith("Últimas 52") ? "52" : per.label.match(/\d+/)[0]) + " semanas" : "todo el periodo cargado" };
+    return { available: Object.keys(comps), rows, excluded, totalVol, nWeeks: new Set(base.map(r => r.w)).size, periodLabel: per && per.prev.length ? "últimas " + (per.label.startsWith("Últimas 52") ? "52" : per.label.match(/\d+/)[0]) + " semanas" : "todo el periodo cargado" };
   }
   function climate(ventasRows, vk, clima) {
     const t = new Map(), tc = new Map();
@@ -609,6 +629,69 @@ input[type=range]{accent-color:var(--brand)}
       const s = pts.filter(p => p.temp >= a && p.temp < b); return { label: l, n: s.length, y: s.length ? s.reduce((x, p) => x + p.y, 0) / s.length : null };
     });
     return { pts, fit, buckets, states: byS.size, weeks: byW.size };
+  }
+
+  /* ---------- pronóstico ---------- */
+  function rollingMeanCentered(arr, win) {
+    const n = arr.length, half = Math.floor(win / 2);
+    if (n < win) { const m = arr.reduce((a, b) => a + b, 0) / n; return arr.map(() => m); }
+    const pre = [0]; for (const x of arr) pre.push(pre[pre.length - 1] + x);
+    return arr.map((_, i) => { let s = i - half; if (s < 0) s = 0; if (s + win > n) s = n - win; return (pre[s + win] - pre[s]) / win; });
+  }
+  const woy52 = d => Math.min(52, isoWeek(d));
+  function fitModel(series, opts) {
+    const n = series.length; if (n < 52) return null;
+    const pay = series.map(o => weekHasPayday(new Date(o.w)));
+    let L = 0;
+    if (opts.payday) { const pe = paydayEffect(series.map(o => ({ w: o.w, d: new Date(o.w), v: o.v })), false); if (pe) L = Math.max(-0.2, Math.min(0.2, pe.lift)); }
+    const adj = series.map((o, i) => o.v / (pay[i] ? 1 + L : 1));
+    const mean = rollingMeanCentered(adj, 52);
+    const byW = new Map();
+    adj.forEach((v, i) => { const w = woy52(new Date(series[i].w)); const a = byW.get(w) || []; a.push(mean[i] ? v / mean[i] : 1); byW.set(w, a); });
+    const idx = {};
+    for (let w = 1; w <= 52; w++) { const a = byW.get(w); idx[w] = a ? a.reduce((x, y) => x + y, 0) / a.length : 1; }
+    const avgIdx = Object.values(idx).reduce((a, b) => a + b, 0) / 52;
+    for (let w = 1; w <= 52; w++) idx[w] /= avgIdx;
+    const d = adj.map((v, i) => v / idx[woy52(new Date(series[i].w))]);
+    const last13 = d.slice(-13); const level = last13.reduce((a, b) => a + b, 0) / last13.length;
+    let g = 0;
+    if (opts.trend) {
+      if (n >= 104) { const a = d.slice(-52), b = d.slice(-104, -52); g = a.reduce((x, y) => x + y, 0) / b.reduce((x, y) => x + y, 0) - 1; }
+      else { const y = d.slice(-52); const f = pearson(y.map((_, i) => i), y); if (f) { const m = y.reduce((a, b) => a + b, 0) / y.length; g = f.slope * 52 / m; } }
+      g = Math.max(-0.2, Math.min(0.2, g));
+    }
+    return { idx, level, g, L, lastW: series[n - 1].w };
+  }
+  function projectBase(model, H) {
+    const out = []; const last = Date.parse(model.lastW);
+    for (let h = 1; h <= H; h++) {
+      const dt = new Date(last + h * 7 * MS); const w = woy52(dt);
+      out.push({ w: key(dt), woy: w, v: model.level * Math.pow(1 + model.g, (h + 6) / 52) * model.idx[w] * (weekHasPayday(dt) ? 1 + model.L : 1) });
+    }
+    return out;
+  }
+  function backtest(series, opts, H) {
+    H = H || 13;
+    if (series.length < 52 + H) return null;
+    const m = fitModel(series.slice(0, -H), opts); if (!m) return null;
+    const f = projectBase(m, H); const act = series.slice(-H);
+    const errs = []; let sf = 0, sa = 0;
+    f.forEach((o, i) => { const a = act[i].v; if (a > 0) errs.push(o.v / a - 1); sf += o.v; sa += a; });
+    if (!errs.length) return null;
+    const mape = errs.reduce((a, e) => a + Math.abs(e), 0) / errs.length;
+    const mu = errs.reduce((a, b) => a + b, 0) / errs.length;
+    const sd = Math.sqrt(errs.reduce((a, e) => a + (e - mu) ** 2, 0) / errs.length);
+    return { mape, totalErr: sa ? sf / sa - 1 : null, sd, H };
+  }
+  function consumoElasticity(ventasRows, vk, gastoRows) {
+    const a = new Map(); for (const r of ventasRows) a.set(r.w, (a.get(r.w) || 0) + (r[vk] || 0));
+    const b = new Map(); for (const r of gastoRows) b.set(r.w, (b.get(r.w) || 0) + r.v);
+    const ks = [...a.keys()].filter(k => b.has(k)).sort();
+    if (ks.length < 20) return null;
+    const ra = centeredRatios(ks.map(k => ({ d: k, v: a.get(k) })), 4);
+    const rb = centeredRatios(ks.map(k => ({ d: k, v: b.get(k) })), 4);
+    const f = pearson(rb.map(o => o.r), ra.map(o => o.r));
+    return f ? { beta: Math.max(0, Math.min(1, f.slope)), r: f.r, n: f.n } : null;
   }
 
   /* ---------- datos de demostración (ficticios) ---------- */
@@ -651,7 +734,7 @@ input[type=range]{accent-color:var(--brand)}
     return { ventas, tiendas, poblacion, gastoEstatal, gastoNacional, clima };
   }
 
-  g.Core = { STATES, SCHEMAS, TYPE_ORDER, norm, toState, parseNum, parseDate, weekStart, key, isoWeek, guessMapping, guessType, transform, volInfo, periods, decompose, weekly, seasonality, detectDaily, paydayEffect, weeklyCorrelation, potential, climate, demo, sum, groupBy };
+  g.Core = { STATES, SCHEMAS, TYPE_ORDER, norm, toState, parseNum, parseDate, weekStart, key, isoWeek, guessMapping, guessType, transform, volInfo, periods, decompose, weekly, seasonality, detectDaily, paydayEffect, weeklyCorrelation, potential, climate, demo, sum, groupBy, fitModel, projectBase, backtest, consumoElasticity };
 })(typeof window !== "undefined" ? window : globalThis);
 </script><script>
 (function () {
@@ -676,7 +759,7 @@ input[type=range]{accent-color:var(--brand)}
   let current = "cargar";
   const charts = {};
 
-  const TABS = [["cargar", "Cargar datos"], ["base", "Revisar base"], ["ventas", "Ventas y precio"], ["calendario", "Calendario"], ["potencial", "Potencial por estado"], ["clima", "Clima"], ["fuentes", "Fuentes y plantillas"]];
+  const TABS = [["cargar", "Cargar datos"], ["base", "Revisar base"], ["ventas", "Ventas y precio"], ["calendario", "Calendario"], ["potencial", "Potencial por estado"], ["clima", "Clima"], ["pronostico", "Pronóstico"], ["fuentes", "Fuentes y plantillas"]];
 
   function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 3200); }
   function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -706,11 +789,12 @@ input[type=range]{accent-color:var(--brand)}
     renderBar();
     $("#demoBanner").hidden = !DEMO;
     if (current === "base") renderBase();
-    if (["ventas", "calendario", "potencial", "clima"].includes(current)) renderFilters();
+    if (["ventas", "calendario", "potencial", "clima", "pronostico"].includes(current)) renderFilters();
     if (current === "ventas") renderVentas();
     if (current === "calendario") renderCal();
     if (current === "potencial") renderPot();
     if (current === "clima") renderClima();
+    if (current === "pronostico") renderPron();
     if (current === "fuentes") renderFuentes();
   }
 
@@ -1054,6 +1138,169 @@ input[type=range]{accent-color:var(--brand)}
     chart("buckets", b, { type: "bar", aria: "Venta contra lo esperado por rango de temperatura", data: { labels: bk.map(x => x.label), datasets: [{ data: bk.map(x => x.y * 100), backgroundColor: bk.map(x => x.y < 0 ? css("--brand") : css("--good")), borderRadius: 3 }] },
       options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => pct(c.parsed.y / 100) + " (" + bk[c.dataIndex].n + " semanas)" } } }, scales: { y: { ticks: { callback: v => nf1.format(v) + "%" } }, x: { grid: { display: false } } } } });
     out.append(el("p", { class: "note", text: "La correlación es de " + nf2.format(cl.fit.r) + ". El calor puede afectar la venta por gusto del consumidor, por chocolate dañado en tienda o porque la tienda reduce surtido; este análisis no distingue entre esas causas." }));
+  }
+
+  /* ---------- pronóstico ---------- */
+  const FC = { H: 26, medida: "vol", eps: -1.0,
+    on: { trend: true, payday: true, clima: true, consumo: true, precio: true, brecha: true },
+    scen: { pes: { dT: 1.5, dc: -3, dp: 0, gap: 0 }, base: { dT: 0, dc: 0, dp: 0, gap: 0 }, opt: { dT: -0.5, dc: 3, dp: 0, gap: 25 } } };
+  const SC = [["pes", "Pesimista"], ["base", "Base"], ["opt", "Optimista"]];
+  function renderPron() {
+    const out = $("#fcOut"); out.innerHTML = "";
+    if (!DATA.ventas.length) { out.append(emptyState("Para pronosticar necesitas cargar ventas internas.")); return; }
+    const rows = filtered(); if (!rows.length) { out.append(el("p", { class: "note", text: "No hay ventas con estos filtros." })); return; }
+    const vi = C.volInfo(rows), vk = vi.key;
+    const wk = C.weekly(rows, vk);
+    if (wk.length < 52) { out.append(el("p", { class: "note", text: "Hacen falta al menos 52 semanas de historia para pronosticar, porque el modelo necesita ver un año completo de estacionalidad. Hay " + wk.length + "." })); return; }
+    const series = wk.map(o => ({ w: o.w, v: o.vol }));
+    const hasEstado = rows.some(r => r.estado);
+    const cl = hasEstado && DATA.clima.length ? C.climate(rows, vk, DATA.clima) : null;
+    const slopeT = cl && cl.fit ? cl.fit.slope : null;
+    const ce = DATA.gastoNacional.length ? C.consumoElasticity(rows, vk, DATA.gastoNacional) : null;
+    const pot = hasEstado && (DATA.tiendas.length || DATA.poblacion.length) ? C.potential(filtered(true), vk, DATA.tiendas, DATA.poblacion, WEIGHTS) : null;
+    const gapW = pot && pot.rows.length ? pot.rows.filter(r => r.indice < 85 && (FILTER.estado === "*" || r.estado === FILTER.estado)).reduce((s, r) => s + r.oportunidad, 0) / (pot.nWeeks || 52) : 0;
+    const avail = { trend: true, payday: true, clima: slopeT != null, consumo: !!ce, precio: true, brecha: gapW > 0 };
+    const why = { clima: "Requiere ventas por estado y la temperatura del SMN.", consumo: "Requiere el gasto con tarjeta de Banxico.", brecha: "Requiere ventas por estado, tiendas o población, y estados por debajo de su potencial." };
+    const act = k => avail[k] && FC.on[k];
+    const opts = { trend: act("trend"), payday: act("payday") };
+    const model = C.fitModel(series, opts);
+    const base = C.projectBase(model, FC.H);
+    const bt = C.backtest(series, opts, 13);
+    const last13 = wk.slice(-13); const V13 = last13.reduce((s, o) => s + o.vol, 0); const p0 = V13 ? last13.reduce((s, o) => s + o.pesos, 0) / V13 : 0;
+    const beta = ce ? ce.beta : 0;
+    function run(s) {
+      const parts = { base: 0, clima: 0, consumo: 0, precio: 0, brecha: 0 }; const weeks = [];
+      base.forEach(b => {
+        let v = b.v; parts.base += v;
+        if (act("clima")) { const nv = v * (1 + slopeT * s.dT); parts.clima += nv - v; v = nv; }
+        if (act("consumo")) { const nv = v * (1 + beta * s.dc / 100); parts.consumo += nv - v; v = nv; }
+        if (act("precio")) { const nv = v * Math.max(0, 1 + FC.eps * s.dp / 100); parts.precio += nv - v; v = nv; }
+        if (act("brecha")) { const add = gapW * (s.gap / 100) * model.idx[b.woy]; parts.brecha += add; v += add; }
+        weeks.push({ w: b.w, vol: v, pesos: v * p0 * (act("precio") ? 1 + s.dp / 100 : 1) });
+      });
+      return { weeks, parts, vol: weeks.reduce((a, o) => a + o.vol, 0), pesos: weeks.reduce((a, o) => a + o.pesos, 0) };
+    }
+    const R = {}; SC.forEach(([k]) => { R[k] = run(FC.scen[k]); });
+    const hist = new Map(wk.map(o => [o.w, o]));
+    const ly = (weeks, f) => { let s = 0; for (const o of weeks) { const h = hist.get(C.key(new Date(Date.parse(o.w) - 364 * 864e5))); if (!h) return null; s += f(h); } return s; };
+    const lyVol = ly(base, h => h.vol), lyPes = ly(base, h => h.pesos);
+
+    /* controles */
+    const hSel = el("select", { onchange: e => { FC.H = +e.target.value; renderPron(); } });
+    [[13, "13 semanas (un trimestre)"], [26, "26 semanas (seis meses)"], [52, "52 semanas (un año)"]].forEach(([v, t]) => hSel.append(el("option", { value: v, text: t })));
+    hSel.value = FC.H;
+    const mSel = el("select", { onchange: e => { FC.medida = e.target.value; renderPron(); } });
+    mSel.append(el("option", { value: "vol", text: vi.label }), el("option", { value: "pesos", text: "Pesos" })); mSel.value = FC.medida;
+    out.append(el("div", { class: "fc-controls" }, el("label", null, "Horizonte", hSel), el("label", null, "Medida", mSel)));
+    out.append(el("h3", { text: "Variables activas" }));
+    const checks = el("div", { class: "checks" });
+    [["trend", "Tendencia"], ["payday", "Quincenas"], ["clima", "Clima"], ["consumo", "Consumo con tarjeta"], ["precio", "Precio"], ["brecha", "Cierre de brecha de potencial"]].forEach(([k, l]) => {
+      const cb = el("input", { type: "checkbox", "aria-label": l });
+      cb.checked = act(k); if (!avail[k]) cb.disabled = true;
+      cb.addEventListener("change", () => { FC.on[k] = cb.checked; renderPron(); });
+      checks.append(el("label", { class: "chk " + (!avail[k] ? "off" : act(k) ? "on" : ""), title: avail[k] ? "" : why[k] }, cb, l));
+    });
+    out.append(checks);
+    const missing = Object.keys(why).filter(k => !avail[k]);
+    if (missing.length) out.append(el("p", { class: "note", text: "No disponibles: " + missing.map(k => ({ clima: "Clima", consumo: "Consumo con tarjeta", brecha: "Brecha de potencial" }[k]) + " (" + why[k].toLowerCase().replace(/\.$/, "") + ")").join("; ") + "." }));
+
+    /* escenarios */
+    out.append(el("h3", { text: "Escenarios" }));
+    const st = el("table", { class: "scen" });
+    st.append(el("tr", null, el("th", { text: "Supuesto" }), ...SC.map(([k, l]) => el("th", { class: "c", text: l })), el("th", { text: "Efecto usado" })));
+    const tagEl = (t, txt) => el("span", { class: "tag " + t, text: txt });
+    const rowsDef = [
+      ["dT", "Temperatura contra lo normal (°C)", 0.5, "clima", slopeT != null ? el("span", null, pct(slopeT) + " de venta por °C", tagEl("est", "Estimado")) : el("span", { class: "meta", text: "Sin dato" })],
+      ["dc", "Consumo con tarjeta contra su tendencia (%)", 1, "consumo", ce ? el("span", null, "Elasticidad " + nf2.format(beta) + (beta >= 1 ? " (tope)" : ""), tagEl("est", "Estimado")) : el("span", { class: "meta", text: "Sin dato" })],
+      ["dp", "Cambio de precio (%)", 1, "precio", null],
+      ["gap", "Brecha de potencial que se cierra (%)", 5, "brecha", gapW > 0 ? el("span", null, "Hasta " + qty(gapW) + " " + vi.unit + " por semana", tagEl("est", "Estimado")) : el("span", { class: "meta", text: "Sin dato" })]
+    ];
+    rowsDef.forEach(([k, l, step, drv, eff]) => {
+      const tr = el("tr", null, el("td", { text: l }));
+      SC.forEach(([s]) => {
+        const inp = el("input", { type: "number", step, value: FC.scen[s][k], "aria-label": l + ", " + s });
+        if (k === "gap") { inp.min = 0; inp.max = 100; }
+        if (!act(drv)) inp.disabled = true;
+        inp.addEventListener("change", () => { const v = parseFloat(inp.value); FC.scen[s][k] = isFinite(v) ? (k === "gap" ? Math.max(0, Math.min(100, v)) : v) : 0; renderPron(); });
+        tr.append(el("td", { class: "c" }, inp));
+      });
+      if (k === "dp") {
+        const e = el("input", { type: "number", step: 0.1, value: FC.eps, "aria-label": "Elasticidad precio" });
+        if (!act("precio")) e.disabled = true;
+        e.addEventListener("change", () => { const v = parseFloat(e.value); FC.eps = isFinite(v) ? v : -1; renderPron(); });
+        eff = el("span", null, "Elasticidad ", e, tagEl("sup", "Supuesto"));
+      }
+      tr.append(el("td", null, eff)); st.append(tr);
+    });
+    out.append(el("div", { class: "scroll" }, st));
+    out.append(el("p", { class: "note", text: "La elasticidad de precio es un supuesto: −1.0 significa que subir 10% el precio baja 10% el volumen. No se estima de la historia porque los cambios de precio se mezclan con promociones y temporadas; conviene reemplazarla con el resultado de una prueba de precio." }));
+
+    /* lectura */
+    const meas = FC.medida === "pesos" ? (o => o.pesos) : (o => o.vol);
+    const fmt = FC.medida === "pesos" ? money : (v => qty(v) + " " + vi.unit);
+    const lyM = FC.medida === "pesos" ? lyPes : lyVol;
+    const totM = k => FC.medida === "pesos" ? R[k].pesos : R[k].vol;
+    const rd = el("p", { class: "read" });
+    rd.append("En las próximas " + FC.H + " semanas, el escenario base proyecta ", el("strong", { text: fmt(totM("base")) }));
+    if (lyM) rd.append(" (", el("strong", { text: pct(totM("base") / lyM - 1) }), " contra las mismas semanas del año anterior)");
+    rd.append(". El rango va de ", el("strong", { text: fmt(totM("pes")) }), " en el pesimista a ", el("strong", { text: fmt(totM("opt")) }), " en el optimista.");
+    out.append(rd);
+
+    /* gráfica */
+    const H0 = wk.slice(-52);
+    const labels = H0.map(o => o.w).concat(base.map(o => o.w));
+    const nH = H0.length;
+    const histData = H0.map(o => FC.medida === "pesos" ? o.pesos : o.vol).concat(base.map(() => null));
+    const lastHist = histData[nH - 1];
+    const sline = k => Array(nH - 1).fill(null).concat([lastHist], R[k].weeks.map(meas));
+    const z = bt ? 1.28 * Math.max(bt.sd, bt.mape * 0.8) : 0;
+    const band = sgn => Array(nH - 1).fill(null).concat([lastHist], R.base.weeks.map(o => meas(o) * (1 + sgn * z)));
+    const ds = [
+      { label: "Historia", data: histData, borderColor: css("--ink"), backgroundColor: css("--ink"), pointRadius: 0, borderWidth: 2, tension: .25 },
+      { label: "Pesimista", data: sline("pes"), borderColor: css("--brand"), backgroundColor: css("--brand"), pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: .25 },
+      { label: "Base", data: sline("base"), borderColor: css("--cocoa"), backgroundColor: css("--cocoa"), pointRadius: 0, borderWidth: 2.5, tension: .25 },
+      { label: "Optimista", data: sline("opt"), borderColor: css("--good"), backgroundColor: css("--good"), pointRadius: 0, borderWidth: 2, borderDash: [5, 4], tension: .25 }
+    ];
+    if (z) ds.push({ label: "Rango probable (base)", data: band(-1), borderWidth: 0, pointRadius: 0, fill: false, tension: .25 }, { label: "_banda", data: band(1), borderWidth: 0, pointRadius: 0, backgroundColor: css("--cocoa-soft"), fill: "-1", tension: .25 });
+    out.append(el("h3", { text: "Historia y proyección por semana" }));
+    chart("fc", out, { type: "line", aria: "Historia y pronóstico semanal por escenario", data: { labels, datasets: ds },
+      options: { interaction: { mode: "index", intersect: false }, plugins: { legend: { position: "bottom", labels: { boxWidth: 12, filter: i => !i.text.startsWith("_") && !i.text.startsWith("Rango") } }, tooltip: { filter: i => !i.dataset.label.startsWith("_") && !i.dataset.label.startsWith("Rango") && i.parsed.y != null, callbacks: { title: c => "Semana del " + fdate(c[0].label), label: c => c.dataset.label + ": " + fmt(c.parsed.y) } } },
+        scales: { x: { ticks: { maxTicksLimit: 8, callback: function (v) { return fdate(this.getLabelForValue(v)); } }, grid: { display: false } }, y: { ticks: { callback: v => FC.medida === "pesos" ? money(v) : qty(v) } } } } }, 340);
+    if (z) out.append(el("p", { class: "note", text: "La banda sombreada es el rango probable del escenario base (80% de confianza), calculado con los errores que el modelo tuvo al pronosticar el pasado." }));
+
+    /* totales */
+    out.append(el("h3", { text: "Totales del horizonte" }));
+    const tt = el("table"); tt.append(el("tr", null, ...["Escenario", vi.label, "Contra año anterior", "Pesos", "Contra año anterior"].map((h, i) => el("th", { class: i ? "n" : null, text: h }))));
+    const colors = { pes: "--brand", base: "--cocoa", opt: "--good" };
+    const cmp = (a, b) => b ? el("td", { class: "n " + (a / b - 1 >= 0 ? "up" : "down"), text: pct(a / b - 1) }) : el("td", { class: "n meta", text: "Sin historia" });
+    SC.forEach(([k, l]) => tt.append(el("tr", null, el("td", null, el("span", { class: "dot", style: "background:var(" + colors[k] + ")" }), l), el("td", { class: "n", text: qty(R[k].vol) + " " + vi.unit }), cmp(R[k].vol, lyVol), el("td", { class: "n", text: money(R[k].pesos) }), cmp(R[k].pesos, lyPes))));
+    out.append(el("div", { class: "scroll" }, tt));
+
+    /* contribución */
+    out.append(el("h3", { text: "Qué aporta cada variable (" + vi.label.toLowerCase() + ")" }));
+    const ct = el("table"); ct.append(el("tr", null, el("th", { text: "" }), ...SC.map(([k, l]) => el("th", { class: "n", text: l }))));
+    const signed = v => (v > 0 ? "+" : v < 0 ? "−" : "") + qty(Math.abs(v));
+    [["base", "Pronóstico base (estacionalidad" + (act("trend") ? ", tendencia" : "") + (act("payday") ? " y quincenas" : "") + ")"], ["clima", "Clima"], ["consumo", "Consumo con tarjeta"], ["precio", "Precio"], ["brecha", "Cierre de brecha de potencial"]].forEach(([k, l]) => {
+      if (k !== "base" && !act(k)) return;
+      ct.append(el("tr", null, el("td", { text: l }), ...SC.map(([s]) => { const v = R[s].parts[k]; return el("td", { class: "n " + (k === "base" ? "" : v > 0 ? "up" : v < 0 ? "down" : ""), text: k === "base" ? qty(v) : signed(v) }); })));
+    });
+    ct.append(el("tr", null, el("td", { style: "font-weight:700", text: "Total" }), ...SC.map(([s]) => el("td", { class: "n", style: "font-weight:700", text: qty(R[s].vol) }))));
+    out.append(el("div", { class: "scroll" }, ct));
+
+    /* cómo se proyecta */
+    out.append(el("h3", { text: "Cómo se proyecta cada variable" }));
+    const vt = el("table"); vt.append(el("tr", null, el("th", { text: "Variable" }), el("th", { text: "Cómo se proyecta" }), el("th", { text: "Valor usado" }), el("th", { text: "Tipo" })));
+    const vrow = (a, b, c, t, tt) => vt.append(el("tr", null, el("td", { text: a }), el("td", { style: "white-space:normal;min-width:280px", text: b }), el("td", { text: c }), el("td", null, tagEl(t, tt))));
+    vrow("Estacionalidad", "Patrón de cada semana del año, medido con la historia de ventas.", "Índice por semana", "est", "Estimado");
+    vrow("Tendencia", "Crecimiento de las últimas 52 semanas contra las 52 anteriores, con tope de ±20% anual.", act("trend") ? pct(model.g) + " anual" : "Desactivada", "est", "Estimado");
+    vrow("Quincenas", "El calendario de pagos se conoce; se aplica el efecto medido a cada semana futura con día 15 o fin de mes.", act("payday") ? pct(model.L) + " en semanas de pago" : "Desactivada", "est", "Estimado");
+    vrow("Clima", "Se asume la temperatura normal de cada semana; el escenario la mueve en grados.", slopeT != null ? pct(slopeT) + " por °C" : "Sin dato", "est", "Asociación");
+    vrow("Consumo con tarjeta", "Se asume que sigue su tendencia; el escenario indica cuánto se aparta de ella.", ce ? "Elasticidad " + nf2.format(beta) : "Sin dato", "est", "Asociación");
+    vrow("Precio", "Lo decide la marca; el efecto en volumen depende de la elasticidad que escribas.", "Elasticidad " + nf1.format(FC.eps), "sup", "Supuesto");
+    vrow("Tiendas y población", "Cambian poco; se mantienen fijas y sirven para medir la brecha de potencial.", pot && pot.rows.length ? "Brecha: " + qty(gapW) + " " + vi.unit + "/semana" : "Sin dato", "est", "Fijo");
+    out.append(el("div", { class: "scroll" }, vt));
+    if (bt) out.append(el("p", { class: "read" }, "Prueba del modelo: ocultando las 13 semanas más recientes y pronosticándolas, el error promedio por semana fue de ", el("strong", { text: nf1.format(bt.mape * 100) + "%" }), " y el error en el total de las 13 semanas fue de ", el("strong", { text: pct(bt.totalErr) }), "."));
+    out.append(el("p", { class: "note", text: "Los efectos de clima y consumo vienen de asociaciones observadas en la historia, no de experimentos: sirven para dimensionar escenarios, no para afirmar causas. El pronóstico base supone que se mantienen la distribución, los precios y la actividad comercial de la historia reciente." }));
   }
 
   /* ---------- fuentes ---------- */
