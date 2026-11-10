@@ -894,11 +894,14 @@ input[type=range]{accent-color:var(--brand)}
     const miss = reqs.filter(k => !p.map[k]);
     if (miss.length) { toast("Falta asignar: " + miss.map(k => s.fields.find(f => f.k === k).label).join(", ")); return; }
     if (DEMO) clearAll(false);
+    let replaced = false;
+    if (p.type !== "ventas" && !MANUAL.has(p.type) && AUTO && AUTO[p.type] && AUTO[p.type].length) { DATA[p.type] = []; UNKNOWN[p.type] = new Map(); replaced = true; }
+    if (p.type !== "ventas") MANUAL.add(p.type);
     const r = C.transform(p.type, p.rows, p.map);
     DATA[p.type] = DATA[p.type].concat(r.rows);
     r.unknown.forEach((n, k) => UNKNOWN[p.type].set(k, (UNKNOWN[p.type].get(k) || 0) + n));
     const drops = Object.entries(r.dropped);
-    let msg = s.label + ": " + nf0.format(r.rows.length) + " filas incorporadas de " + p.file + ".";
+    let msg = s.label + ": " + nf0.format(r.rows.length) + " filas incorporadas de " + p.file + "." + (replaced ? " Reemplazaron a los datos automáticos de esta fuente; para volver a ellos, recarga la página." : "");
     if (drops.length) msg += " Se descartaron " + drops.map(([k, n]) => nf0.format(n) + " por " + k).join(", ") + ".";
     if (r.unknown.size) msg += " Estados no reconocidos: " + [...r.unknown.keys()].slice(0, 5).join(", ") + (r.unknown.size > 5 ? "…" : "") + ".";
     if (p.type === "ventas" && p.map.estado == null) msg += " Sin columna de estado, el análisis por estado y de clima no estará disponible.";
@@ -909,7 +912,8 @@ input[type=range]{accent-color:var(--brand)}
   function logLine(msg, warn) { $("#log").prepend(el("p", { class: warn ? "warn" : "", text: msg })); }
 
   let AUTO = null, AUTO_INFO = null;
-  function resetToAuto() { C.TYPE_ORDER.forEach(t => { DATA[t] = AUTO && AUTO[t] ? AUTO[t].slice() : []; UNKNOWN[t] = new Map(); }); }
+  const MANUAL = new Set();
+  function resetToAuto() { MANUAL.clear(); C.TYPE_ORDER.forEach(t => { DATA[t] = AUTO && AUTO[t] ? AUTO[t].slice() : []; UNKNOWN[t] = new Map(); }); }
   async function loadExternos() {
     try {
       const r = await fetch("data/externos.json", { cache: "no-store" });
