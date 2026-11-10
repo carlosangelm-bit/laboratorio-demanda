@@ -693,6 +693,36 @@ input[type=range]{accent-color:var(--brand)}
     const f = pearson(rb.map(o => o.r), ra.map(o => o.r));
     return f ? { beta: Math.max(0, Math.min(1, f.slope)), r: f.r, n: f.n } : null;
   }
+  function feElasticity(rows, vk) {
+    const cell = r => [r.producto, r.canal, r.estado || ""].join("|");
+    const agg = new Map();
+    for (const r of rows) { if (r.pesos == null || r[vk] == null) continue; const c = cell(r); const k = c + "#" + r.w; const o = agg.get(k) || { c, w: r.w, p: 0, v: 0 }; o.p += r.pesos; o.v += r[vk]; agg.set(k, o); }
+    let obs = [...agg.values()].filter(o => o.p > 0 && o.v > 0).map(o => ({ c: o.c, w: o.w, y: Math.log(o.v), x: Math.log(o.p / o.v) }));
+    const cnt = new Map(); obs.forEach(o => cnt.set(o.c, (cnt.get(o.c) || 0) + 1));
+    obs = obs.filter(o => cnt.get(o.c) >= 20);
+    const nCells = new Set(obs.map(o => o.c)).size;
+    if (obs.length < 200 || nCells < 3) return null;
+    for (let it = 0; it < 25; it++) {
+      for (const g of ["c", "w"]) {
+        const s = new Map();
+        for (const o of obs) { const a = s.get(o[g]) || [0, 0, 0]; a[0] += o.y; a[1] += o.x; a[2]++; s.set(o[g], a); }
+        for (const o of obs) { const a = s.get(o[g]); o.y -= a[0] / a[2]; o.x -= a[1] / a[2]; }
+      }
+    }
+    let sxx = 0, sxy = 0; for (const o of obs) { sxx += o.x * o.x; sxy += o.x * o.y; }
+    const n = obs.length; const sdx = Math.sqrt(sxx / n);
+    if (sdx < 1e-6) return { n, nCells, sdx, eps: null, se: null };
+    const eps = sxy / sxx;
+    const sc = new Map(); for (const o of obs) { const e = o.y - eps * o.x; sc.set(o.c, (sc.get(o.c) || 0) + o.x * e); }
+    let meat = 0; sc.forEach(v => { meat += v * v; });
+    const G = sc.size; const se = Math.sqrt(meat / (sxx * sxx) * (G / Math.max(1, G - 1)));
+    return { eps, se, n, nCells, sdx };
+  }
+  function priceElasticity(rows, vk) {
+    const all = feElasticity(rows, vk);
+    const byP = []; groupBy(rows, r => r.producto).forEach((rs, p) => { const e = feElasticity(rs, vk); if (e) byP.push(Object.assign({ producto: p }, e)); });
+    return { all, byP };
+  }
 
   /* ---------- datos de demostración (ficticios) ---------- */
   function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -717,8 +747,9 @@ input[type=range]{accent-color:var(--brand)}
         clima.push({ d, w, estado: STATES[s], v: Math.round(temp * 10) / 10 });
         const heat = temp > 30 ? 1 - 0.015 * (temp - 30) : 1;
         for (const [c, cs, cp] of canales) for (const [p, ps, pr, g1, g2] of prods) {
-          const piezas = Math.round(POP[s] * 4000 * cs * ps * sf[s] * mult * heat * (y2 ? 1.02 : 1) * (0.92 + R() * 0.16));
-          const precio = pr * cp * (y2 ? 1.06 : 1);
+          const promo = R() < 0.08;
+          const piezas = Math.round(POP[s] * 4000 * cs * ps * sf[s] * mult * heat * (y2 ? 1.02 : 1) * (promo ? Math.pow(0.85, -2) : 1) * (0.92 + R() * 0.16));
+          const precio = pr * cp * (y2 ? 1.06 : 1) * (promo ? 0.85 : 1);
           const gr = y2 ? g2 : g1;
           ventas.push({ d, w, estado: STATES[s], canal: c, producto: p, piezas, pesos: Math.round(piezas * precio), kg: piezas * gr / 1000 });
         }
@@ -734,7 +765,7 @@ input[type=range]{accent-color:var(--brand)}
     return { ventas, tiendas, poblacion, gastoEstatal, gastoNacional, clima };
   }
 
-  g.Core = { STATES, SCHEMAS, TYPE_ORDER, norm, toState, parseNum, parseDate, weekStart, key, isoWeek, guessMapping, guessType, transform, volInfo, periods, decompose, weekly, seasonality, detectDaily, paydayEffect, weeklyCorrelation, potential, climate, demo, sum, groupBy, fitModel, projectBase, backtest, consumoElasticity };
+  g.Core = { STATES, SCHEMAS, TYPE_ORDER, norm, toState, parseNum, parseDate, weekStart, key, isoWeek, guessMapping, guessType, transform, volInfo, periods, decompose, weekly, seasonality, detectDaily, paydayEffect, weeklyCorrelation, potential, climate, demo, sum, groupBy, fitModel, projectBase, backtest, consumoElasticity, priceElasticity };
 })(typeof window !== "undefined" ? window : globalThis);
 </script><script>
 (function () {
@@ -1030,6 +1061,35 @@ input[type=range]{accent-color:var(--brand)}
     if (new Set(rows.map(r => r.canal)).size > 1) { tb.append(el("tr", null, el("td", { colspan: 7, style: "font-weight:700;color:var(--ink)", text: "Canales" }))); addRows("canal"); }
     if (new Set(rows.map(r => r.producto)).size > 1) { tb.append(el("tr", null, el("td", { colspan: 7, style: "font-weight:700;color:var(--ink)", text: "Productos" }))); addRows("producto"); }
     out.append(el("div", { class: "scroll" }, tb));
+    renderElasticity(out, rows, vi);
+  }
+  const elCache = { k: null, v: null };
+  function getElasticity(rows, vk) {
+    const k = rows.length + "|" + vk + "|" + FILTER.canal + "|" + FILTER.producto + "|" + FILTER.estado + "|" + DATA.ventas.length;
+    if (elCache.k !== k) { const ek = rows.length && rows.filter(r => r.piezas != null).length / rows.length >= 0.95 ? "piezas" : vk; elCache.k = k; elCache.v = Object.assign({ key: ek }, C.priceElasticity(rows, ek)); }
+    return elCache.v;
+  }
+  function elQuality(e) {
+    if (!e || e.eps == null) return { cls: "", txt: "No concluyente", why: "No hay variación de precio suficiente para medirla." };
+    if (e.sdx < 0.02) return { cls: "", txt: "No concluyente", why: "El precio casi no varió (menos de 2%) fuera de los cambios generales." };
+    if (e.eps > 0.2) return { cls: "", txt: "Revisar", why: "Sale positiva: suele indicar que las bajas de precio coincidieron con menos exhibición o que el precio no es de anaquel." };
+    if (Math.abs(e.eps / e.se) < 2) return { cls: "sup", txt: "Indicativa", why: "El margen de error es amplio." };
+    return { cls: "est", txt: "Confiable", why: "Variación de precio suficiente y margen de error acotado." };
+  }
+  function renderElasticity(out, rows, vi) {
+    out.append(el("h3", null, "Elasticidad precio estimada con tus datos", el("span", { class: "tag assoc", text: "Estimación observacional" })));
+    const pe = getElasticity(rows, vi.key);
+    const e = pe.all; const q = elQuality(e);
+    const rd = el("p", { class: "read" });
+    if (e && e.eps != null && q.txt !== "No concluyente") rd.append("Cuando el precio por " + (pe.key === "kg" ? "kilo" : "pieza") + " de un producto sube 1% respecto a lo habitual en esa tienda o estado, y fuera de lo que pasó en todo el mercado esa semana, su volumen cambia ", el("strong", { text: nf2.format(e.eps) + "%" }), " (rango probable de " + nf2.format(e.eps - 1.96 * e.se) + " a " + nf2.format(e.eps + 1.96 * e.se) + "). Calidad: ", el("span", { class: "tag " + q.cls, text: q.txt }), " " + q.why);
+    else rd.append("No se pudo estimar con los datos cargados. " + q.why + " Para medirla hacen falta ventas por producto, tienda o estado y semana, con pesos y volumen, y que el precio haya variado entre tiendas o periodos.");
+    out.append(rd);
+    if (pe.byP.length > 1) {
+      const t = el("table"); t.append(el("tr", null, ...["Producto", "Elasticidad", "Rango probable", "Variación de precio", "Calidad"].map((h, i) => el("th", { class: i && i < 4 ? "n" : null, text: h }))));
+      pe.byP.forEach(r => { const qq = elQuality(r); t.append(el("tr", null, el("td", { text: r.producto }), el("td", { class: "n", text: r.eps != null ? nf2.format(r.eps) : "" }), el("td", { class: "n", text: r.eps != null ? nf2.format(r.eps - 1.96 * r.se) + " a " + nf2.format(r.eps + 1.96 * r.se) : "" }), el("td", { class: "n", text: nf1.format(r.sdx * 100) + "%" }), el("td", null, el("span", { class: "tag " + qq.cls, text: qq.txt })))); });
+      out.append(el("div", { class: "scroll" }, t));
+    }
+    out.append(el("p", { class: "note", text: "Método: compara cada combinación de producto, canal y estado contra sí misma, y cada semana contra el resto del mercado, así que no confunde temporadas ni diferencias entre estados con efecto del precio. El precio es pesos entre volumen: si el archivo es sell-in, refleja el precio de factura y no el de anaquel. Las promociones suelen venir con exhibición adicional, lo que puede exagerar la respuesta; una prueba de precio con tiendas de control es lo único que la confirma." }));
   }
 
   /* ---------- calendario ---------- */
@@ -1141,9 +1201,9 @@ input[type=range]{accent-color:var(--brand)}
   }
 
   /* ---------- pronóstico ---------- */
-  const FC = { H: 26, medida: "vol", eps: -1.0,
+  const FC = { H: 26, medida: "vol", eps: -2.0, epsCat: -1.2, epsSrc: "sup",
     on: { trend: true, payday: true, clima: true, consumo: true, precio: true, brecha: true },
-    scen: { pes: { dT: 1.5, dc: -3, dp: 0, gap: 0 }, base: { dT: 0, dc: 0, dp: 0, gap: 0 }, opt: { dT: -0.5, dc: 3, dp: 0, gap: 25 } } };
+    scen: { pes: { dT: 1.5, dc: -3, dp: 0, dpc: 0, gap: 0 }, base: { dT: 0, dc: 0, dp: 0, dpc: 0, gap: 0 }, opt: { dT: -0.5, dc: 3, dp: 0, dpc: 0, gap: 25 } } };
   const SC = [["pes", "Pesimista"], ["base", "Base"], ["opt", "Optimista"]];
   function renderPron() {
     const out = $("#fcOut"); out.innerHTML = "";
@@ -1168,15 +1228,17 @@ input[type=range]{accent-color:var(--brand)}
     const bt = C.backtest(series, opts, 13);
     const last13 = wk.slice(-13); const V13 = last13.reduce((s, o) => s + o.vol, 0); const p0 = V13 ? last13.reduce((s, o) => s + o.pesos, 0) / V13 : 0;
     const beta = ce ? ce.beta : 0;
+    const peE = getElasticity(rows, vk).all; const qE = elQuality(peE);
+    const estUsable = peE && peE.eps != null && (qE.txt === "Confiable" || qE.txt === "Indicativa");
     function run(s) {
-      const parts = { base: 0, clima: 0, consumo: 0, precio: 0, brecha: 0 }; const weeks = [];
+      const parts = { base: 0, clima: 0, consumo: 0, precio: 0, precioCat: 0, brecha: 0 }; const weeks = [];
       base.forEach(b => {
         let v = b.v; parts.base += v;
         if (act("clima")) { const nv = v * (1 + slopeT * s.dT); parts.clima += nv - v; v = nv; }
         if (act("consumo")) { const nv = v * (1 + beta * s.dc / 100); parts.consumo += nv - v; v = nv; }
-        if (act("precio")) { const nv = v * Math.max(0, 1 + FC.eps * s.dp / 100); parts.precio += nv - v; v = nv; }
+        if (act("precio")) { let nv = v * Math.max(0, 1 + FC.eps * s.dp / 100); parts.precio += nv - v; v = nv; nv = v * Math.max(0, 1 + FC.epsCat * s.dpc / 100); parts.precioCat += nv - v; v = nv; }
         if (act("brecha")) { const add = gapW * (s.gap / 100) * model.idx[b.woy]; parts.brecha += add; v += add; }
-        weeks.push({ w: b.w, vol: v, pesos: v * p0 * (act("precio") ? 1 + s.dp / 100 : 1) });
+        weeks.push({ w: b.w, vol: v, pesos: v * p0 * (act("precio") ? (1 + s.dp / 100) * (1 + s.dpc / 100) : 1) });
       });
       return { weeks, parts, vol: weeks.reduce((a, o) => a + o.vol, 0), pesos: weeks.reduce((a, o) => a + o.pesos, 0) };
     }
@@ -1212,7 +1274,8 @@ input[type=range]{accent-color:var(--brand)}
     const rowsDef = [
       ["dT", "Temperatura contra lo normal (°C)", 0.5, "clima", slopeT != null ? el("span", null, pct(slopeT) + " de venta por °C", tagEl("est", "Estimado")) : el("span", { class: "meta", text: "Sin dato" })],
       ["dc", "Consumo con tarjeta contra su tendencia (%)", 1, "consumo", ce ? el("span", null, "Elasticidad " + nf2.format(beta) + (beta >= 1 ? " (tope)" : ""), tagEl("est", "Estimado")) : el("span", { class: "meta", text: "Sin dato" })],
-      ["dp", "Cambio de precio (%)", 1, "precio", null],
+      ["dp", "Precio de KitKat, solo la marca (%)", 1, "precio", null],
+      ["dpc", "Precio de toda la categoría (%)", 1, "precio", null],
       ["gap", "Brecha de potencial que se cierra (%)", 5, "brecha", gapW > 0 ? el("span", null, "Hasta " + qty(gapW) + " " + vi.unit + " por semana", tagEl("est", "Estimado")) : el("span", { class: "meta", text: "Sin dato" })]
     ];
     rowsDef.forEach(([k, l, step, drv, eff]) => {
@@ -1225,15 +1288,22 @@ input[type=range]{accent-color:var(--brand)}
         tr.append(el("td", { class: "c" }, inp));
       });
       if (k === "dp") {
-        const e = el("input", { type: "number", step: 0.1, value: FC.eps, "aria-label": "Elasticidad precio" });
+        const e = el("input", { type: "number", step: 0.1, value: Math.round(FC.eps * 100) / 100, "aria-label": "Elasticidad precio de la marca" });
         if (!act("precio")) e.disabled = true;
-        e.addEventListener("change", () => { const v = parseFloat(e.value); FC.eps = isFinite(v) ? v : -1; renderPron(); });
+        e.addEventListener("change", () => { const v = parseFloat(e.value); FC.eps = isFinite(v) ? v : -2; FC.epsSrc = "sup"; renderPron(); });
+        eff = el("span", null, "Elasticidad ", e, FC.epsSrc === "est" ? tagEl("est", "Estimada con tus datos") : tagEl("sup", "Supuesto"));
+        if (estUsable && FC.epsSrc !== "est") eff.append(" ", el("button", { class: "btn ghost small", onclick: () => { FC.eps = peE.eps; FC.epsSrc = "est"; renderPron(); }, text: "Usar la estimada (" + nf2.format(peE.eps) + ")" }));
+      }
+      if (k === "dpc") {
+        const e = el("input", { type: "number", step: 0.1, value: FC.epsCat, "aria-label": "Elasticidad precio de la categoría" });
+        if (!act("precio")) e.disabled = true;
+        e.addEventListener("change", () => { const v = parseFloat(e.value); FC.epsCat = isFinite(v) ? v : -1.2; renderPron(); });
         eff = el("span", null, "Elasticidad ", e, tagEl("sup", "Supuesto"));
       }
       tr.append(el("td", null, eff)); st.append(tr);
     });
     out.append(el("div", { class: "scroll" }, st));
-    out.append(el("p", { class: "note", text: "La elasticidad de precio es un supuesto: −1.0 significa que subir 10% el precio baja 10% el volumen. No se estima de la historia porque los cambios de precio se mezclan con promociones y temporadas; conviene reemplazarla con el resultado de una prueba de precio." }));
+    out.append(el("p", { class: "note", text: "Precio de la marca: si solo KitKat sube y la competencia no, parte de los compradores se cambia de marca; por eso se usa −2.0 (rango típico de −1.5 a −2.5 en consumo masivo). Precio de la categoría: si sube todo el chocolate, solo se pierde a quien deja de comprar; se usa −1.2, del estudio de Quiroz-Reyes y colaboradores (2025) con la ENIGH para alimentos no esenciales densos en energía en zonas urbanas. Si tus datos permiten estimarla, aparece el botón para usar la elasticidad de KitKat medida en la pestaña Ventas y precio." }));
 
     /* lectura */
     const meas = FC.medida === "pesos" ? (o => o.pesos) : (o => o.vol);
@@ -1280,8 +1350,8 @@ input[type=range]{accent-color:var(--brand)}
     out.append(el("h3", { text: "Qué aporta cada variable (" + vi.label.toLowerCase() + ")" }));
     const ct = el("table"); ct.append(el("tr", null, el("th", { text: "" }), ...SC.map(([k, l]) => el("th", { class: "n", text: l }))));
     const signed = v => (v > 0 ? "+" : v < 0 ? "−" : "") + qty(Math.abs(v));
-    [["base", "Pronóstico base (estacionalidad" + (act("trend") ? ", tendencia" : "") + (act("payday") ? " y quincenas" : "") + ")"], ["clima", "Clima"], ["consumo", "Consumo con tarjeta"], ["precio", "Precio"], ["brecha", "Cierre de brecha de potencial"]].forEach(([k, l]) => {
-      if (k !== "base" && !act(k)) return;
+    [["base", "Pronóstico base (estacionalidad" + (act("trend") ? ", tendencia" : "") + (act("payday") ? " y quincenas" : "") + ")"], ["clima", "Clima"], ["consumo", "Consumo con tarjeta"], ["precio", "Precio de KitKat"], ["precioCat", "Precio de la categoría"], ["brecha", "Cierre de brecha de potencial"]].forEach(([k, l]) => {
+      if (k !== "base" && !act(k === "precioCat" ? "precio" : k)) return;
       ct.append(el("tr", null, el("td", { text: l }), ...SC.map(([s]) => { const v = R[s].parts[k]; return el("td", { class: "n " + (k === "base" ? "" : v > 0 ? "up" : v < 0 ? "down" : ""), text: k === "base" ? qty(v) : signed(v) }); })));
     });
     ct.append(el("tr", null, el("td", { style: "font-weight:700", text: "Total" }), ...SC.map(([s]) => el("td", { class: "n", style: "font-weight:700", text: qty(R[s].vol) }))));
@@ -1296,7 +1366,8 @@ input[type=range]{accent-color:var(--brand)}
     vrow("Quincenas", "El calendario de pagos se conoce; se aplica el efecto medido a cada semana futura con día 15 o fin de mes.", act("payday") ? pct(model.L) + " en semanas de pago" : "Desactivada", "est", "Estimado");
     vrow("Clima", "Se asume la temperatura normal de cada semana; el escenario la mueve en grados.", slopeT != null ? pct(slopeT) + " por °C" : "Sin dato", "est", "Asociación");
     vrow("Consumo con tarjeta", "Se asume que sigue su tendencia; el escenario indica cuánto se aparta de ella.", ce ? "Elasticidad " + nf2.format(beta) : "Sin dato", "est", "Asociación");
-    vrow("Precio", "Lo decide la marca; el efecto en volumen depende de la elasticidad que escribas.", "Elasticidad " + nf1.format(FC.eps), "sup", "Supuesto");
+    vrow("Precio de KitKat", "Lo decide la marca; el efecto en volumen usa la elasticidad de la marca.", "Elasticidad " + nf2.format(FC.eps), FC.epsSrc === "est" ? "est" : "sup", FC.epsSrc === "est" ? "Estimada" : "Supuesto");
+    vrow("Precio de la categoría", "Movimiento general de precios del chocolate (por ejemplo, por el cacao); usa la elasticidad de la categoría.", "Elasticidad " + nf2.format(FC.epsCat), "sup", "Supuesto");
     vrow("Tiendas y población", "Cambian poco; se mantienen fijas y sirven para medir la brecha de potencial.", pot && pot.rows.length ? "Brecha: " + qty(gapW) + " " + vi.unit + "/semana" : "Sin dato", "est", "Fijo");
     out.append(el("div", { class: "scroll" }, vt));
     if (bt) out.append(el("p", { class: "read" }, "Prueba del modelo: ocultando las 13 semanas más recientes y pronosticándolas, el error promedio por semana fue de ", el("strong", { text: nf1.format(bt.mape * 100) + "%" }), " y el error en el total de las 13 semanas fue de ", el("strong", { text: pct(bt.totalErr) }), "."));
