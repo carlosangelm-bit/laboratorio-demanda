@@ -47,7 +47,7 @@ button,select,input{font:inherit;color:inherit}
 .mast-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:28px;align-items:end}
 h1{font-stretch:68%;font-weight:800;font-size:clamp(2.3rem,5.4vw,3.7rem);line-height:.92;letter-spacing:-.01em;margin:0 0 12px}
 .lede{margin:0;color:var(--muted);max-width:46ch}
-.bar{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;padding:6px;border-radius:10px;background:var(--cocoa-soft)}
+.bar{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;padding:6px;border-radius:10px;background:var(--cocoa-soft)}
 .seg{appearance:none;border:0;text-align:left;cursor:pointer;min-height:78px;border-radius:6px;padding:9px 9px 8px;background:var(--surface);color:var(--muted);display:flex;flex-direction:column;justify-content:space-between;box-shadow:inset 0 -4px 0 rgba(0,0,0,.06);transition:transform .15s}
 .seg:hover{transform:translateY(-1px)}
 .seg b{font-stretch:80%;font-weight:700;font-size:.86rem;line-height:1.1;color:var(--ink)}
@@ -137,7 +137,7 @@ input[type=range]{accent-color:var(--brand)}
 .tag.est{border-color:var(--good);color:var(--good)}
 @media (max-width:820px){
   .mast-grid{grid-template-columns:1fr}
-  .bar{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .bar{grid-template-columns:repeat(4,minmax(0,1fr))}
   .two{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -178,6 +178,12 @@ input[type=range]{accent-color:var(--brand)}
   <h2>Revisar base</h2>
   <p class="sub">Qué hay cargado, qué periodo cubre y qué valores no se pudieron reconocer.</p>
   <div id="baseOut"></div>
+</section>
+
+<section id="p-cliente" hidden>
+  <h2>Cliente mensual</h2>
+  <p class="sub">Para archivos de un cliente con los meses en columnas: volumen en toneladas, NPS (facturación), Trade Expend (% sobre NPS), NNS y sell-out. Compara años, separa el cambio en NNS y revisa si el plan es alcanzable.</p>
+  <div id="cliOut"></div>
 </section>
 
 <section id="p-ventas" hidden>
@@ -391,7 +397,8 @@ input[type=range]{accent-color:var(--brand)}
       ]
     }
   };
-  const TYPE_ORDER = ["ventas", "tiendas", "poblacion", "gastoEstatal", "gastoNacional", "clima"];
+  SCHEMAS.mensual = { label: "Cliente mensual (meses en columnas)", short: "Cliente mensual", origin: "interno", hint: "Archivo por clave con los meses hacia la derecha y conceptos como Vol, NPS, TE, NNS y SO.", fields: [] };
+  const TYPE_ORDER = ["ventas", "mensual", "tiendas", "poblacion", "gastoEstatal", "gastoNacional", "clima"];
 
   function guessMapping(type, headers) {
     const map = {}; const used = new Set();
@@ -412,8 +419,10 @@ input[type=range]{accent-color:var(--brand)}
     return map;
   }
   function guessType(headers) {
+    if (headers.filter(h => parseMonthHeader(h)).length >= 6) return "mensual";
     let best = "ventas", bestScore = -1;
     for (const t of TYPE_ORDER) {
+      if (t === "mensual") continue;
       const m = guessMapping(t, headers);
       const req = { ventas: ["pesos"], tiendas: ["estado"], poblacion: ["estado", "poblacion"], gastoEstatal: ["fecha", "estado", "valor"], gastoNacional: ["fecha", "valor"], clima: ["fecha", "estado", "temp"] }[t];
       if (!req.every(k => m[k])) continue;
@@ -724,6 +733,155 @@ input[type=range]{accent-color:var(--brand)}
     return { all, byP };
   }
 
+  /* ---------- cliente mensual (meses en columnas) ---------- */
+  const MESN = { ene: 1, enero: 1, jan: 1, january: 1, feb: 2, febrero: 2, february: 2, mar: 3, marzo: 3, march: 3, abr: 4, abril: 4, apr: 4, april: 4, may: 5, mayo: 5, jun: 6, junio: 6, june: 6, jul: 7, julio: 7, july: 7, ago: 8, agosto: 8, aug: 8, august: 8, sep: 9, sept: 9, septiembre: 9, setiembre: 9, september: 9, oct: 10, octubre: 10, october: 10, nov: 11, noviembre: 11, november: 11, dic: 12, diciembre: 12, dec: 12, december: 12 };
+  const CONCEPTOS = [["nns", ["nns", "venta neta", "net net", "ingreso neto"]], ["nps", ["nps", "facturacion", "sell in", "sellin", "gross"]], ["oa", ["oa", "other allowances", "allowances", "otros descuentos", "otras deducciones"]], ["te", ["te", "trade expend", "trade", "inversion"]], ["so", ["so", "sell out", "sellout", "venta", "ventas", "venta sams"]], ["vol", ["vol", "volumen", "ton", "toneladas", "tons"]]];
+  const CONCEPT_LABEL = { vol: "Volumen (ton)", nps: "NPS (facturación)", te: "Trade Expend (%)", oa: "Other allowances", nns: "NNS", so: "Sell-out (venta)" };
+  function detectConcept(v) {
+    const s = " " + norm(v) + " ";
+    if (s.trim() === "") return null;
+    for (const [k, words] of CONCEPTOS) for (const w of words) if (s.includes(" " + w + " ")) return k;
+    return null;
+  }
+  function parseMonthHeader(h) {
+    if (h == null || h === "") return null;
+    if (typeof h === "number") { if (h > 30000 && h < 80000) { const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(h) * MS); return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, concept: null }; } return null; }
+    if (/^\d{4,5}$/.test(String(h).trim())) return parseMonthHeader(+String(h).trim());
+    const s = norm(h).replace(/([a-z])(\d)/g, "$1 $2").replace(/(\d)([a-z])/g, "$1 $2");
+    const t = s.split(" ").filter(Boolean);
+    let m = null, y = null, mi = -1;
+    t.forEach((w, i) => { if (m == null && MESN[w]) { m = MESN[w]; mi = i; } });
+    if (m == null) {
+      const iy = t.findIndex(w => /^20\d\d$/.test(w));
+      if (iy >= 0) { const nb = [t[iy + 1], t[iy - 1]].find(w => w && /^\d{1,2}$/.test(w) && +w >= 1 && +w <= 12); if (nb) { m = +nb; y = +t[iy]; } }
+      if (m == null) return null;
+    }
+    if (y == null) { const fy = t.find(w => /^20\d\d$/.test(w)); if (fy) y = +fy; else if (mi >= 0 && t[mi + 1] && /^\d{2}$/.test(t[mi + 1])) y = 2000 + +t[mi + 1]; }
+    const rest = t.filter((w, i) => i !== mi && !/^\d+$/.test(w)).join(" ");
+    return { y, m, concept: rest ? detectConcept(rest) : null };
+  }
+  function inferCategory(desc) {
+    const s = norm(desc);
+    if (/kit ?kat|carlos v|larin|crunch|bocadin|milky|cajeta/.test(s)) return "Chocolate Impulso";
+    if (/abuelita|carnation|ibarra/.test(s)) return "Mesa";
+    if (/nesquik|morelia|choco ?milk|cola cao/.test(s)) return "Modificadores";
+    return "Sin categoría";
+  }
+  function monthHeaders(headers) { return headers.map(h => ({ h, p: parseMonthHeader(h) })).filter(o => o.p); }
+  function transformMensual(rows, headers, opts) {
+    const months = monthHeaders(headers);
+    const out = []; const dropped = {}; const drop = r => { dropped[r] = (dropped[r] || 0) + 1; };
+    let lastId = null, lastDesc = null, lastCat = null;
+    for (const row of rows) {
+      let clave = opts.clave ? row[opts.clave] : null;
+      let desc = opts.desc ? row[opts.desc] : null;
+      const hasId = (clave != null && String(clave).trim() !== "") || (desc != null && String(desc).trim() !== "");
+      if (!hasId && opts.concepto && lastId) { clave = lastId; desc = lastDesc; }
+      const id = clave != null && String(clave).trim() !== "" ? String(clave).trim() : (desc != null ? String(desc).trim() : "");
+      if (!id) { drop("fila sin clave ni descripción"); continue; }
+      if (/\btotal\b|\bsubtotal\b|\bgran total\b/.test(norm(id) + " " + norm(desc))) { drop("fila de total o subtotal"); continue; }
+      const rowConcept = opts.concepto ? detectConcept(row[opts.concepto]) : null;
+      if (opts.concepto && !rowConcept) { drop("concepto no reconocido"); continue; }
+      let cat = opts.categoria && row[opts.categoria] ? String(row[opts.categoria]).trim() : null;
+      if (!cat) cat = (id === lastId && lastCat) ? lastCat : inferCategory((desc || "") + " " + id);
+      lastId = clave != null ? String(clave).trim() : id; lastDesc = desc; lastCat = cat;
+      let any = false;
+      for (const { h, p } of months) {
+        const concept = rowConcept || p.concept || opts.bloque || null;
+        if (!concept) continue;
+        const y = p.y || opts.anio; if (!y) continue;
+        let v = parseNum(row[h]); if (v == null) continue;
+        if (concept === "te" && Math.abs(v) > 1.5) v = v / 100;
+        out.push({ clave: id, desc: desc != null && String(desc).trim() ? String(desc).trim() : id, cat, y, m: p.m, ym: y + "-" + String(p.m).padStart(2, "0"), concept, v });
+        any = true;
+      }
+      if (!any) drop("sin valores de mes");
+    }
+    return { rows: out, dropped, unknown: new Map(), months: months.length };
+  }
+  function mCells(recs, curYM) {
+    const m = new Map();
+    for (const r of recs) {
+      const k = r.clave + "|" + r.ym;
+      let o = m.get(k);
+      if (!o) { o = { clave: r.clave, desc: r.desc, cat: r.cat, ym: r.ym, y: r.y, m: r.m, est: r.ym >= curYM, vol: null, nps: null, te: null, oa: null, nns: null, so: null }; m.set(k, o); }
+      o[r.concept] = (o[r.concept] == null || r.concept === "te") ? r.v : o[r.concept] + r.v;
+    }
+    const out = [];
+    m.forEach(o => {
+      const nps = o.nps || 0;
+      const teAmt = o.te != null ? nps * o.te : 0;
+      const oaAmt = o.oa == null ? 0 : (Math.abs(o.oa) <= 1.5 ? nps * o.oa : o.oa);
+      const nns = o.nns != null ? o.nns : (o.nps != null ? nps - teAmt - oaAmt : null);
+      out.push({ clave: o.clave, desc: o.desc, cat: o.cat, ym: o.ym, y: o.y, m: o.m, est: o.est, vol: o.vol || 0, nps, teAmt, otherAmt: nns != null ? nps - teAmt - nns : oaAmt, nns: nns || 0, so: o.so || 0, hasSo: o.so != null });
+    });
+    return out;
+  }
+  function mSum(cells) {
+    const s = { vol: 0, nps: 0, teAmt: 0, otherAmt: 0, nns: 0, so: 0, n: cells.length };
+    for (const c of cells) { s.vol += c.vol; s.nps += c.nps; s.teAmt += c.teAmt; s.otherAmt += c.otherAmt; s.nns += c.nns; s.so += c.so; }
+    s.tePct = s.nps ? s.teAmt / s.nps : null; s.otherPct = s.nps ? s.otherAmt / s.nps : null;
+    s.pTon = s.vol ? s.nps / s.vol : null; s.nnsTon = s.vol ? s.nns / s.vol : null;
+    return s;
+  }
+  function mBridge(cA, cB) {
+    const A = mSum(cA), B = mSum(cB);
+    if (!B.vol || !A.vol || !B.nps) return null;
+    const k0 = 1 - B.tePct - B.otherPct;
+    const volumen = (A.vol - B.vol) * B.pTon * k0;
+    const precioTot = A.vol * (A.pTon - B.pTon) * k0;
+    const byA = groupBy(cA, c => c.clave), byB = groupBy(cB, c => c.clave);
+    let puro = 0;
+    byA.forEach((ca, k) => { const cb = byB.get(k); if (!cb) return; const a = mSum(ca), b = mSum(cb); if (a.vol && b.vol) puro += (a.pTon - b.pTon) * a.vol * k0; });
+    const trade = -A.nps * (A.tePct - B.tePct);
+    const otros = -A.nps * (A.otherPct - B.otherPct);
+    return { base: B.nns, volumen, precio: puro, mezcla: precioTot - puro, trade, otros, final: A.nns, A, B };
+  }
+  function mForecast(series, horizonYM) {
+    if (series.length < 18) return null;
+    const byY = groupBy(series, o => o.y);
+    const ratios = {}; for (let m = 1; m <= 12; m++) ratios[m] = [];
+    byY.forEach(a => { if (a.length < 12) return; const mean = a.reduce((s, o) => s + o.v, 0) / a.length; if (mean > 0) a.forEach(o => ratios[o.m].push(o.v / mean)); });
+    const fullYears = [...byY.values()].filter(a => a.length >= 12).length;
+    if (!fullYears) return null;
+    const idx = {};
+    for (let m = 1; m <= 12; m++) idx[m] = ratios[m].length ? ratios[m].reduce((a, b) => a + b, 0) / ratios[m].length : 1;
+    const avg = Object.values(idx).reduce((a, b) => a + b, 0) / 12; for (let m = 1; m <= 12; m++) idx[m] /= avg;
+    const map = new Map(series.map(o => [o.ym, o.v]));
+    const N = Math.min(12, series.length - 12); let sc = 0, sp = 0;
+    series.slice(-N).forEach(o => { const p = map.get((o.y - 1) + "-" + String(o.m).padStart(2, "0")); if (p != null) { sc += o.v; sp += p; } });
+    const g = sp ? Math.max(-0.25, Math.min(0.25, sc / sp - 1)) : 0;
+    const l3 = series.slice(-3); const level = l3.reduce((s, o) => s + o.v / idx[o.m], 0) / l3.length;
+    const last = series[series.length - 1]; const points = [];
+    let y = last.y, m = last.m, h = 0;
+    while (h < 36) { m++; if (m > 12) { m = 1; y++; } h++; const ym = y + "-" + String(m).padStart(2, "0"); if (ym > horizonYM) break; points.push({ ym, y, m, v: level * Math.pow(1 + g, (h + 1) / 12) * idx[m] }); }
+    let mape = null;
+    if (series.length >= 24) {
+      const te = series.slice(-6); const f = mForecast(series.slice(0, -6), te[te.length - 1].ym);
+      if (f) { const errs = f.points.map((o, i) => te[i] && te[i].v ? Math.abs(o.v / te[i].v - 1) : null).filter(x => x != null); if (errs.length) mape = errs.reduce((a, b) => a + b, 0) / errs.length; }
+    }
+    return { points, g, idx, mape, fullYears, n: series.length };
+  }
+  function demoMensual() {
+    const R = rng(7713);
+    const skus = [["12345001", "KitKat 12 piezas", "Chocolate Impulso", 380, 210], ["12345002", "Carlos V 27 piezas", "Chocolate Impulso", 300, 185], ["12345003", "Carlos V sticks", "Chocolate Impulso", 120, 190], ["12345004", "Larín cero", "Chocolate Impulso", 60, 240],
+      ["12345005", "Abuelita 2x630 g", "Mesa", 420, 120], ["12345006", "Abuelita 2/595 g + Carnation 2/360 g", "Mesa", 260, 135],
+      ["12345007", "Nesquik 2.3 kg", "Modificadores", 330, 140], ["12345008", "Morelia 4/357 g", "Modificadores", 90, 150], ["12345009", "Nesquik 2.2 kg + fresa 357 g", "Modificadores", 140, 145], ["12345010", "Nesquik Brownie 1.4 kg", "Modificadores", 70, 160], ["12345011", "Nesquik Moka 1.4 kg", "Modificadores", 60, 160]];
+    const seas = { "Chocolate Impulso": [0.9, 1.2, 0.95, 0.95, 1.05, 0.85, 0.85, 0.9, 0.95, 1.1, 1.15, 1.35], "Mesa": [1.3, 0.9, 0.8, 0.7, 0.7, 0.6, 0.6, 0.7, 0.9, 1.3, 1.5, 1.8], "Modificadores": [1.0, 0.95, 1.0, 1.0, 1.0, 1.0, 1.1, 1.15, 1.0, 0.95, 0.9, 0.95] };
+    const out = [];
+    for (const [cl, d, cat, base, ptK] of skus) for (let y = 2025; y <= 2027; y++) for (let m = 1; m <= 12; m++) {
+      const g = Math.pow(1.05, (y - 2025) + (m - 1) / 12);
+      const vol = base / 10 * seas[cat][m - 1] * g * (0.9 + R() * 0.2);
+      const price = ptK * 1000 * (y >= 2026 ? 1.07 : 1) * (y >= 2027 ? 1.05 : 1);
+      const nps = vol * price; const te = 0.14 + (y >= 2026 ? 0.015 : 0) + (R() - 0.5) * 0.02; const oa = 0.03;
+      const so = nps * (1.32 + (R() - 0.5) * 0.12) * (y === 2026 && m >= 7 ? 0.95 : 1);
+      const ym = y + "-" + String(m).padStart(2, "0");
+      const push = (concept, v) => out.push({ clave: cl, desc: d, cat, y, m, ym, concept, v });
+      push("vol", Math.round(vol * 100) / 100); push("nps", Math.round(nps)); push("te", Math.round(te * 1000) / 1000); push("nns", Math.round(nps * (1 - te - oa))); if (y < 2027) push("so", Math.round(so));
+    }
+    return out;
+  }
+
   /* ---------- datos de demostración (ficticios) ---------- */
   function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
   const POP = [1.43, 3.77, 0.8, 0.93, 3.15, 0.73, 5.54, 3.74, 9.21, 1.83, 6.17, 3.54, 3.08, 8.35, 16.99, 4.75, 1.97, 1.24, 5.78, 4.13, 6.58, 2.37, 1.86, 2.82, 3.03, 2.94, 2.4, 3.53, 1.34, 8.06, 2.32, 1.62];
@@ -762,10 +920,10 @@ input[type=range]{accent-color:var(--brand)}
     const gastoNacional = [];
     const startD = end - (N - 1) * W;
     for (let t = startD; t <= end + 6 * MS; t += MS) { const d = new Date(t); const m = (isPayDay(d) ? 1.12 : 1) * (1 + 0.25 * ((occ[isoWeek(d)] || 0))) * (0.95 + R() * 0.1); gastoNacional.push({ d, w: key(weekStart(d)), estado: null, v: Math.round(4200 * m) }); }
-    return { ventas, tiendas, poblacion, gastoEstatal, gastoNacional, clima };
+    return { ventas, tiendas, poblacion, gastoEstatal, gastoNacional, clima, mensual: demoMensual() };
   }
 
-  g.Core = { STATES, SCHEMAS, TYPE_ORDER, norm, toState, parseNum, parseDate, weekStart, key, isoWeek, guessMapping, guessType, transform, volInfo, periods, decompose, weekly, seasonality, detectDaily, paydayEffect, weeklyCorrelation, potential, climate, demo, sum, groupBy, fitModel, projectBase, backtest, consumoElasticity, priceElasticity };
+  g.Core = { STATES, SCHEMAS, TYPE_ORDER, norm, toState, parseNum, parseDate, weekStart, key, isoWeek, guessMapping, guessType, transform, volInfo, periods, decompose, weekly, seasonality, detectDaily, paydayEffect, weeklyCorrelation, potential, climate, demo, sum, groupBy, fitModel, projectBase, backtest, consumoElasticity, priceElasticity, parseMonthHeader, monthHeaders, detectConcept, inferCategory, transformMensual, mCells, mSum, mBridge, mForecast, CONCEPT_LABEL };
 })(typeof window !== "undefined" ? window : globalThis);
 </script><script>
 (function () {
@@ -781,7 +939,7 @@ input[type=range]{accent-color:var(--brand)}
   const pct = (v, plus = true) => (v > 0 && plus ? "+" : v < 0 ? "−" : "") + nf1.format(Math.abs(v * 100)) + "%";
   const fdate = t => new Date(t).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
-  const DATA = { ventas: [], tiendas: [], poblacion: [], gastoEstatal: [], gastoNacional: [], clima: [] };
+  const DATA = { ventas: [], mensual: [], tiendas: [], poblacion: [], gastoEstatal: [], gastoNacional: [], clima: [] };
   const UNKNOWN = {}; C.TYPE_ORDER.forEach(t => UNKNOWN[t] = new Map());
   let DEMO = false;
   const FILTER = { canal: "*", producto: "*", estado: "*" };
@@ -790,7 +948,7 @@ input[type=range]{accent-color:var(--brand)}
   let current = "cargar";
   const charts = {};
 
-  const TABS = [["cargar", "Cargar datos"], ["base", "Revisar base"], ["ventas", "Ventas y precio"], ["calendario", "Calendario"], ["potencial", "Potencial por estado"], ["clima", "Clima"], ["pronostico", "Pronóstico"], ["fuentes", "Fuentes y plantillas"]];
+  const TABS = [["cargar", "Cargar datos"], ["base", "Revisar base"], ["cliente", "Cliente mensual"], ["ventas", "Ventas y precio"], ["calendario", "Calendario"], ["potencial", "Potencial por estado"], ["clima", "Clima"], ["pronostico", "Pronóstico"], ["fuentes", "Fuentes y plantillas"]];
 
   function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 3200); }
   function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -820,6 +978,7 @@ input[type=range]{accent-color:var(--brand)}
     renderBar();
     $("#demoBanner").hidden = !DEMO;
     if (current === "base") renderBase();
+    if (current === "cliente") renderCliente();
     if (["ventas", "calendario", "potencial", "clima", "pronostico"].includes(current)) renderFilters();
     if (current === "ventas") renderVentas();
     if (current === "calendario") renderCal();
@@ -863,6 +1022,7 @@ input[type=range]{accent-color:var(--brand)}
       for (const t of C.TYPE_ORDER) typeSel.append(el("option", { value: t, text: C.SCHEMAS[t].label + (C.SCHEMAS[t].origin === "interno" ? " (interno)" : " (público)") }));
       typeSel.value = p.type;
       const grid = el("div", { class: "mapgrid" });
+      if (p.type === "mensual") { if (!p.mopt) p.mopt = guessMensualOpts(p); renderPendingMensual(p, grid); }
       for (const f of s.fields) {
         const sel = el("select", { onchange: e => { if (e.target.value) p.map[f.k] = e.target.value; else delete p.map[f.k]; } });
         sel.append(el("option", { value: "", text: "Sin asignar" }));
@@ -888,6 +1048,22 @@ input[type=range]{accent-color:var(--brand)}
 
   function incorporate(p) {
     const s = C.SCHEMAS[p.type];
+    if (p.type === "mensual") {
+      const o = p.mopt || {};
+      if (!o.clave && !o.desc) { toast("Asigna la columna de clave o la de descripción."); return; }
+      const mh = C.monthHeaders(p.headers);
+      if (!o.concepto && !mh.some(x => x.p.concept) && !o.bloque) { toast("Indica la columna de concepto o qué concepto es toda la hoja."); return; }
+      if (mh.some(x => !x.p.y) && !o.anio) { toast("Indica el año de los meses que no lo traen."); return; }
+      if (DEMO) clearAll(false);
+      const r = C.transformMensual(p.rows, p.headers, o);
+      DATA.mensual = DATA.mensual.concat(r.rows);
+      const drops = Object.entries(r.dropped);
+      const cs = [...new Set(r.rows.map(x => x.concept))].map(k => C.CONCEPT_LABEL[k]);
+      let msg = "Cliente mensual: " + nf0.format(new Set(r.rows.map(x => x.clave)).size) + " claves y " + nf0.format(r.rows.length) + " valores incorporados de " + p.file + (cs.length ? " (" + cs.join(", ") + ")" : "") + ".";
+      if (drops.length) msg += " Se ignoraron " + drops.map(([k, n]) => nf0.format(n) + " por " + k).join(", ") + ".";
+      const sc = r.rows.filter(x => x.cat === "Sin categoría"); if (sc.length) msg += " " + new Set(sc.map(x => x.clave)).size + " claves quedaron sin categoría: agrega una columna de categoría si las necesitas separadas.";
+      logLine(msg, false); pending = pending.filter(x => x !== p); renderPending(); show("cliente"); return;
+    }
     if (p.type === "ventas" && !p.map.fecha && !(p.map.anio && p.map.semana)) { toast("Asigna la columna de fecha, o la de año y semana."); return; }
     if (p.type === "ventas" && !p.map.pesos && !p.map.piezas && !p.map.kg) { toast("Asigna al menos pesos, piezas o kilos."); return; }
     const reqs = { tiendas: ["estado"], poblacion: ["estado", "poblacion"], gastoEstatal: ["fecha", "estado", "valor"], gastoNacional: ["fecha", "valor"], clima: ["fecha", "estado", "temp"] }[p.type] || [];
@@ -941,7 +1117,7 @@ input[type=range]{accent-color:var(--brand)}
   $("#loadDemo").addEventListener("click", () => {
     clearAll(false);
     Object.assign(DATA, C.demo()); DEMO = true;
-    logLine("Se cargaron datos ficticios de demostración en las seis fuentes. Al quitarlos, o al incorporar tu primer archivo, se restauran las fuentes públicas automáticas.", true);
+    logLine("Se cargaron datos ficticios de demostración en todas las fuentes, incluido un cliente mensual con 11 claves. Al quitarlos, o al incorporar tu primer archivo, se restauran las fuentes públicas automáticas.", true);
     show("ventas");
   });
   $("#clearDemo").addEventListener("click", () => { clearAll(); $("#log").innerHTML = ""; show("cargar"); });
@@ -955,10 +1131,11 @@ input[type=range]{accent-color:var(--brand)}
     for (const k of C.TYPE_ORDER) {
       const rows = DATA[k]; if (!rows.length) continue; any = true;
       let periodo = "No aplica", detalle = "";
-      if (rows[0].d) { let mn = Infinity, mx = 0; for (const r of rows) { const v = r.d.getTime(); if (v < mn) mn = v; if (v > mx) mx = v; } periodo = fdate(mn) + " a " + fdate(mx); }
+      if (rows[0].d && k !== "mensual") { let mn = Infinity, mx = 0; for (const r of rows) { const v = r.d.getTime(); if (v < mn) mn = v; if (v > mx) mx = v; } periodo = fdate(mn) + " a " + fdate(mx); }
       const est = new Set(rows.map(r => r.estado).filter(Boolean)).size;
       if (k === "ventas") { const vi = C.volInfo(rows); detalle = new Set(rows.map(r => r.canal)).size + " canales, " + new Set(rows.map(r => r.producto)).size + " productos, " + (C.detectDaily(rows) ? "diaria" : "semanal") + ", volumen en " + vi.label.toLowerCase() + (vi.partial ? " (incompleto)" : ""); }
       if (k === "gastoNacional" || k === "clima" || k === "gastoEstatal") detalle = C.detectDaily(rows) ? "Serie diaria" : "Serie semanal o mensual";
+      if (k === "mensual") { const ys = [...new Set(rows.map(r => r.y))].sort(); detalle = new Set(rows.map(r => r.clave)).size + " claves, " + new Set(rows.map(r => r.cat)).size + " categorías, años " + ys.join(", "); periodo = ys[0] + " a " + ys[ys.length - 1]; }
       if (k === "tiendas") detalle = nf0.format(C.sum(rows, r => r.tiendas)) + " tiendas";
       if (k === "poblacion") detalle = rows.some(r => r.ingreso != null) ? "Con ingreso" : "Sin ingreso";
       t.append(el("tr", null, el("td", { text: C.SCHEMAS[k].label }), el("td", { class: "n", text: nf0.format(rows.length) }), el("td", { text: periodo }), el("td", { text: est ? est + " de 32" : "Nacional" }), el("td", { text: detalle }),
@@ -1378,6 +1555,185 @@ input[type=range]{accent-color:var(--brand)}
     out.append(el("p", { class: "note", text: "Los efectos de clima y consumo vienen de asociaciones observadas en la historia, no de experimentos: sirven para dimensionar escenarios, no para afirmar causas. El pronóstico base supone que se mantienen la distribución, los precios y la actividad comercial de la historia reciente." }));
   }
 
+  /* ---------- cliente mensual ---------- */
+  const MENS = { firstEst: "2026-11", comp: null, metric: "nns", cat: "*", clave: "*" };
+  const MES_CORTO = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  const METRICS = { vol: ["Volumen (ton)", v => qty(v) + " t"], nps: ["NPS", money], tePct: ["Trade Expend (%)", v => nf1.format(v * 100) + "%"], nns: ["NNS", money], nnsTon: ["NNS por tonelada", money], so: ["Sell-out", money] };
+  const mval = (s, k) => k === "tePct" ? s.tePct : k === "nnsTon" ? s.nnsTon : s[k];
+  function mStatus(c) { const ey = +MENS.firstEst.slice(0, 4); return c.ym < MENS.firstEst ? "R" : c.y === ey ? "E" : "P"; }
+  function guessMensualOpts(p) {
+    const others = p.headers.filter(h => !C.parseMonthHeader(h));
+    const find = syn => others.find(h => syn.some(s => { const n = C.norm(h); return n === s || n.startsWith(s + " ") || n.endsWith(" " + s); }));
+    const o = { clave: find(["clave", "sku", "material", "codigo", "cve", "id"]), desc: find(["descripcion", "producto", "nombre", "articulo", "desc"]), categoria: find(["categoria", "category", "familia", "segmento"]) };
+    o.concepto = others.find(h => h !== o.clave && h !== o.desc && h !== o.categoria && p.rows.slice(0, 60).filter(r => r[h] != null && C.detectConcept(r[h])).length >= Math.min(3, p.rows.length));
+    const mh = C.monthHeaders(p.headers);
+    if (!o.concepto && !mh.some(x => x.p.concept)) o.bloque = C.detectConcept(p.sheet) || "";
+    if (mh.some(x => !x.p.y)) o.anio = "";
+    return o;
+  }
+  function renderPendingMensual(p, grid) {
+    const others = p.headers.filter(h => !C.parseMonthHeader(h));
+    const mh = C.monthHeaders(p.headers);
+    const colSel = (k, label, hint) => { const sel = el("select", { onchange: e => { p.mopt[k] = e.target.value || null; } }); sel.append(el("option", { value: "", text: hint || "Sin asignar" })); others.forEach(h => sel.append(el("option", { value: h, text: h }))); sel.value = p.mopt[k] || ""; grid.append(el("label", null, label, sel)); };
+    colSel("clave", "Clave"); colSel("desc", "Descripción"); colSel("categoria", "Categoría", "Deducirla del nombre"); colSel("concepto", "Columna de concepto (Vol, NPS, TE…)", "No hay: viene en el encabezado o es toda la hoja");
+    if (!p.mopt.concepto && !mh.some(x => x.p.concept)) {
+      const sel = el("select", { onchange: e => { p.mopt.bloque = e.target.value; } }); sel.append(el("option", { value: "", text: "Elige el concepto de esta hoja" }));
+      Object.entries(C.CONCEPT_LABEL).forEach(([k, l]) => sel.append(el("option", { value: k, text: l }))); sel.value = p.mopt.bloque || ""; grid.append(el("label", null, "Toda la hoja es", sel));
+    }
+    if (mh.some(x => !x.p.y)) { const inp = el("input", { type: "number", value: p.mopt.anio || "", placeholder: "2026", style: "padding:7px 9px;border:1px solid var(--line);border-radius:8px", onchange: e => { p.mopt.anio = +e.target.value || ""; } }); grid.append(el("label", null, "Año de los meses sin año", inp)); }
+    const ys = [...new Set(mh.map(x => x.p.y).filter(Boolean))].sort();
+    grid.append(el("p", { class: "note", style: "grid-column:1/-1;margin:0", text: "Detecté " + mh.length + " columnas de mes" + (ys.length ? " (" + ys.join(", ") + ")" : "") + ". Las filas de total y subtotal se ignoran para no duplicar." }));
+  }
+  function mCompOptions(cells) {
+    const ys = [...new Set(cells.map(c => c.y))].sort();
+    const ey = +MENS.firstEst.slice(0, 4), em = +MENS.firstEst.slice(5);
+    const opts = [];
+    for (let i = ys.length - 1; i >= 1; i--) { const a = ys[i], b = ys[i - 1]; const lab = a > ey ? "Plan " + a + " contra " + b + (b === ey ? " (real + estimado)" : "") : a === ey ? a + " (real + estimado) contra " + b : a + " contra " + b; opts.push(["y" + a, lab, c => c.y === a, c => c.y === b]); }
+    if (ys.includes(ey) && ys.includes(ey - 1) && em > 1) opts.push(["ytd", "Acumulado real ene–" + MES_CORTO[em - 2].toLowerCase() + " " + ey + " contra " + (ey - 1), c => c.y === ey && c.m < em, c => c.y === ey - 1 && c.m < em]);
+    return opts;
+  }
+  function renderCliente() {
+    const out = $("#cliOut"); out.innerHTML = "";
+    if (!DATA.mensual.length) { out.append(emptyState("Carga el archivo del cliente con los meses en columnas (Vol, NPS, TE, NNS, SO), o prueba con los datos de ejemplo.")); return; }
+    const all = C.mCells(DATA.mensual, MENS.firstEst);
+    /* filtros */
+    const f = el("div", { class: "filters" });
+    const cats = [...new Set(all.map(c => c.cat))].sort();
+    const mk = (label, val, opts, on) => { const s = el("select", { onchange: e => on(e.target.value) }); opts.forEach(([v, t]) => s.append(el("option", { value: v, text: t }))); s.value = val; f.append(el("label", null, label, s)); };
+    mk("Categoría", MENS.cat, [["*", "Todas"]].concat(cats.map(c => [c, c])), v => { MENS.cat = v; MENS.clave = "*"; renderCliente(); });
+    const inCat = all.filter(c => MENS.cat === "*" || c.cat === MENS.cat);
+    const claves = [...new Map(inCat.map(c => [c.clave, c.desc])).entries()].sort((a, b) => a[1].localeCompare(b[1], "es"));
+    mk("Clave", MENS.clave, [["*", "Todas"]].concat(claves.map(([k, d]) => [k, d === k ? k : d + " (" + k + ")"])), v => { MENS.clave = v; renderCliente(); });
+    const cells = inCat.filter(c => MENS.clave === "*" || c.clave === MENS.clave);
+    const copts = mCompOptions(cells);
+    if (!copts.length) { out.append(f, el("p", { class: "note", text: "Hace falta al menos dos años en el archivo para comparar." })); return; }
+    if (!copts.some(o => o[0] === MENS.comp)) MENS.comp = (copts.find(o => o[0] === "y" + MENS.firstEst.slice(0, 4)) || copts[0])[0];
+    mk("Comparación", MENS.comp, copts.map(o => [o[0], o[1]]), v => { MENS.comp = v; renderCliente(); });
+    const estIn = el("input", { type: "month", value: MENS.firstEst, style: "padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface)", onchange: e => { if (e.target.value) { MENS.firstEst = e.target.value; renderCliente(); } } });
+    f.append(el("label", null, "Primer mes estimado", estIn));
+    out.append(f);
+    const co = copts.find(o => o[0] === MENS.comp);
+    const cA = cells.filter(co[2]), cB = cells.filter(co[3]);
+    const A = C.mSum(cA), B = C.mSum(cB);
+    const nE = cA.filter(c => mStatus(c) !== "R").length;
+    out.append(el("p", { class: "meta", text: co[1] + "." + (nE ? " El periodo incluye meses estimados o de plan." : "") }));
+    /* KPIs */
+    const dd = (a, b) => b ? a / b - 1 : null;
+    const kp = (l, v, d, pp) => el("div", { class: "kpi" }, el("div", { class: "l", text: l }), el("div", { class: "v", text: v }), d == null ? el("div", { class: "d meta", text: "Sin comparación" }) : el("div", { class: "d " + ((pp ? -d : d) >= 0 ? "up" : "down"), text: pp ? (d >= 0 ? "+" : "−") + nf1.format(Math.abs(d * 100)) + " pp" : pct(d) }));
+    const hasSo = cA.some(c => c.hasSo);
+    out.append(el("div", { class: "kpis" },
+      kp("Volumen", qty(A.vol) + " t", dd(A.vol, B.vol)), kp("NPS", money(A.nps), dd(A.nps, B.nps)),
+      kp("Trade Expend", A.tePct != null ? nf1.format(A.tePct * 100) + "%" : "Sin dato", A.tePct != null && B.tePct != null ? A.tePct - B.tePct : null, true),
+      kp("NNS", money(A.nns), dd(A.nns, B.nns)), kp("NNS por tonelada", A.nnsTon ? money(A.nnsTon) : "Sin dato", dd(A.nnsTon, B.nnsTon)),
+      kp("Sell-out", hasSo ? money(A.so) : "Sin dato", hasSo ? dd(A.so, B.so) : null)));
+    /* cascada NNS */
+    const br = C.mBridge(cA, cB);
+    if (br) {
+      out.append(el("h3", { text: "De dónde viene el cambio en NNS" }));
+      const pts = x => (x >= 0 ? "+" : "−") + money(Math.abs(x));
+      const rd = el("p", { class: "read" });
+      rd.append("El NNS pasó de ", el("strong", { text: money(br.base) }), " a ", el("strong", { text: money(br.final) }), " (" + pct(br.final / br.base - 1) + "). Volumen aporta ", el("strong", { text: pts(br.volumen) }), ", precio por tonelada ", el("strong", { text: pts(br.precio) }), ", mezcla de claves ", el("strong", { text: pts(br.mezcla) }), ", el cambio en Trade Expend ", el("strong", { text: pts(br.trade) }), " y otros descuentos ", el("strong", { text: pts(br.otros) }), ".");
+      out.append(rd);
+      const st = [["Anterior", 0, br.base, 1]]; let acc = br.base;
+      [["Volumen", br.volumen], ["Precio", br.precio], ["Mezcla", br.mezcla], ["Trade Expend", br.trade], ["Otros desc.", br.otros]].forEach(([l, v]) => { st.push([l, acc, acc + v]); acc += v; });
+      st.push(["Actual", 0, br.final, 1]);
+      const lo = Math.min(...st.filter(s => !s[3]).map(s => Math.min(s[1], s[2])), br.base, br.final), hi = Math.max(...st.map(s => Math.max(s[1], s[2]))); const pad = (hi - lo) * 0.6 || hi * 0.05;
+      chart("mwf", out, { type: "bar", aria: "Cascada de NNS", data: { labels: st.map(s => s[0]), datasets: [{ data: st.map(s => [s[3] ? Math.max(0, lo - pad) : s[1], s[2]]), backgroundColor: st.map(s => s[3] ? css("--cocoa") : s[2] >= s[1] ? css("--good") : css("--brand")), borderRadius: 4, barPercentage: .62 }] },
+        options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => { const s = st[c.dataIndex]; return s[3] ? money(s[2]) : (s[2] - s[1] >= 0 ? "+" : "") + money(s[2] - s[1]); } } } }, scales: { y: { min: Math.max(0, lo - pad), ticks: { callback: v => money(v) } }, x: { grid: { display: false } } } } }, 300);
+      out.append(el("p", { class: "note", text: "Precio es NPS por tonelada en cada clave. Mezcla es vender más o menos de claves caras. Trade Expend en rojo significa que la inversión como porcentaje del NPS subió." }));
+    }
+    /* mes a mes */
+    out.append(el("h3", { text: "Mes a mes" }));
+    const ms = el("select", { onchange: e => { MENS.metric = e.target.value; renderCliente(); } }); Object.entries(METRICS).forEach(([k, [l]]) => ms.append(el("option", { value: k, text: l }))); ms.value = MENS.metric;
+    out.append(el("div", { class: "fc-controls" }, el("label", null, "Indicador", ms)));
+    const [mLab, mFmt] = METRICS[MENS.metric];
+    const ys = [...new Set(cells.map(c => c.y))].sort();
+    const grid = {}; ys.forEach(y => { grid[y] = []; for (let m = 1; m <= 12; m++) { const cc = cells.filter(c => c.y === y && c.m === m); grid[y][m] = cc.length ? { s: C.mSum(cc), st: mStatus(cc[0]) } : null; } });
+    const palette = [css("--muted"), css("--ext"), css("--brand"), css("--cocoa"), css("--good")];
+    chart("mline", out, { type: "line", aria: "Indicador mensual por año", data: { labels: MES_CORTO, datasets: ys.map((y, i) => { const col = palette[(i + palette.length - ys.length) % palette.length]; return { label: String(y) + (y > +MENS.firstEst.slice(0, 4) ? " (plan)" : ""), data: grid[y].slice(1).map(o => o && (MENS.metric !== "so" || o.s.so) ? mval(o.s, MENS.metric) : null), borderColor: col, backgroundColor: col, borderWidth: 2, tension: .25, pointRadius: grid[y].slice(1).map(o => o && o.st === "E" ? 5 : 2), pointStyle: grid[y].slice(1).map(o => o && o.st === "E" ? "rectRot" : "circle"), borderDash: y > +MENS.firstEst.slice(0, 4) ? [6, 4] : [] }; }) },
+      options: { interaction: { mode: "index", intersect: false }, plugins: { legend: { position: "bottom", labels: { boxWidth: 12 } }, tooltip: { callbacks: { label: c => c.dataset.label + ": " + (c.parsed.y == null ? "" : mFmt(c.parsed.y)) } } }, scales: { y: { ticks: { callback: v => MENS.metric === "tePct" ? nf1.format(v * 100) + "%" : MENS.metric === "vol" ? qty(v) : money(v) } }, x: { grid: { display: false } } } } }, 300);
+    out.append(el("p", { class: "note", text: "Rombos: meses estimados. Línea punteada: año de plan." }));
+    const t = el("table"); const hr = el("tr", null, el("th", { text: "Mes" }));
+    ys.forEach((y, i) => { hr.append(el("th", { class: "n", text: String(y) })); if (i) hr.append(el("th", { class: "n", text: "vs " + ys[i - 1] })); }); t.append(hr);
+    for (let m = 1; m <= 12; m++) {
+      const tr = el("tr", null, el("td", { text: MES_CORTO[m - 1] }));
+      ys.forEach((y, i) => {
+        const o = grid[y][m]; const v = o ? mval(o.s, MENS.metric) : null;
+        tr.append(el("td", { class: "n" }, v != null && !(MENS.metric === "so" && !o.s.so) ? mFmt(v) : "", o && o.st !== "R" ? el("span", { class: "tag " + (o.st === "E" ? "sup" : "assoc"), text: o.st === "E" ? "E" : "P" }) : null));
+        if (i) { const p = grid[ys[i - 1]][m]; const pv = p ? mval(p.s, MENS.metric) : null; let txt = "", cls = "n"; if (v != null && pv) { if (MENS.metric === "tePct") { const d = v - pv; txt = (d >= 0 ? "+" : "−") + nf1.format(Math.abs(d * 100)) + " pp"; cls += d > 0 ? " down" : " up"; } else if (!(MENS.metric === "so" && (!o.s.so || !p.s.so))) { const d = v / pv - 1; txt = pct(d); cls += d >= 0 ? " up" : " down"; } } tr.append(el("td", { class: cls, text: txt })); }
+      });
+      t.append(tr);
+    }
+    const tot = el("tr", null, el("td", { style: "font-weight:700", text: "Año" }));
+    ys.forEach((y, i) => { const s = C.mSum(cells.filter(c => c.y === y)); const v = mval(s, MENS.metric); tot.append(el("td", { class: "n", style: "font-weight:700", text: v != null && !(MENS.metric === "so" && !s.so) ? mFmt(v) : "" })); if (i) { const p = mval(C.mSum(cells.filter(c => c.y === ys[i - 1])), MENS.metric); tot.append(el("td", { class: "n", style: "font-weight:700", text: v != null && p ? (MENS.metric === "tePct" ? (v - p >= 0 ? "+" : "−") + nf1.format(Math.abs((v - p) * 100)) + " pp" : pct(v / p - 1)) : "" })); } });
+    t.append(tot);
+    out.append(el("div", { class: "scroll" }, t));
+    out.append(el("p", { class: "note", text: "E: estimado. P: plan. Los años incompletos se comparan con el año completo anterior; para comparar periodos iguales usa la opción de acumulado en Comparación." }));
+    /* sell-in vs sell-out */
+    const soCells = cells.filter(c => c.hasSo);
+    if (soCells.length) {
+      out.append(el("h3", { text: "Sell-in contra sell-out" }));
+      const As = C.mSum(cA.filter(c => c.hasSo)), Bs = C.mSum(cB.filter(c => c.hasSo));
+      if (As.so && Bs.so) {
+        const gi = As.nps / Bs.nps - 1, go = As.so / Bs.so - 1;
+        const rd = el("p", { class: "read" });
+        rd.append("En los meses con venta de Sam's, la facturación cambió ", el("strong", { text: pct(gi) }), " y la venta al consumidor ", el("strong", { text: pct(go) }), ". ", gi - go > 0.03 ? "La facturación crece más rápido que la venta: puede estar acumulándose inventario en Sam's." : go - gi > 0.03 ? "La venta crece más rápido que la facturación: Sam's está bajando inventario, lo que suele anticipar pedidos." : "Facturación y venta se mueven parecido.");
+        out.append(rd);
+      }
+      const yms = [...new Set(soCells.map(c => c.ym))].sort().slice(-24);
+      const per = yms.map(ym => { const cc = soCells.filter(c => c.ym === ym); return C.mSum(cc); });
+      chart("mso", out, { type: "bar", aria: "Sell-in contra sell-out", data: { labels: yms.map(ym => MES_CORTO[+ym.slice(5) - 1] + " " + ym.slice(2, 4)), datasets: [
+        { type: "bar", label: "NPS (sell-in)", data: per.map(s => s.nps), backgroundColor: css("--cocoa-soft"), borderRadius: 2, yAxisID: "y" },
+        { type: "line", label: "Sell-out", data: per.map(s => s.so), borderColor: css("--brand"), backgroundColor: css("--brand"), borderWidth: 2, pointRadius: 0, tension: .25, yAxisID: "y" },
+        { type: "line", label: "Sell-out ÷ NPS", data: per.map(s => s.nps ? s.so / s.nps : null), borderColor: css("--ext"), backgroundColor: css("--ext"), borderDash: [5, 4], borderWidth: 2, pointRadius: 0, yAxisID: "y2" }] },
+        options: { interaction: { mode: "index", intersect: false }, plugins: { legend: { position: "bottom", labels: { boxWidth: 12 } }, tooltip: { callbacks: { label: c => c.dataset.label + ": " + (c.datasetIndex === 2 ? nf2.format(c.parsed.y) : money(c.parsed.y)) } } }, scales: { y: { ticks: { callback: v => money(v) } }, y2: { position: "right", grid: { display: false }, ticks: { callback: v => nf2.format(v) } }, x: { grid: { display: false } } } } }, 300);
+      out.append(el("p", { class: "note", text: "El sell-out está a precio de Sam's (incluye su margen), así que el cociente no vale por su nivel sino por su tendencia: si baja varios meses seguidos, se está facturando más de lo que se vende." }));
+    }
+    /* por categoría y clave */
+    out.append(el("h3", { text: "Por categoría y clave" }));
+    const tb = el("table"); tb.append(el("tr", null, ...["", "Vol (t)", "Δ", "NPS", "Δ", "TE %", "Δ pp", "NNS", "Δ", "NNS/t", "Δ", "SO Δ"].map((h, i) => el("th", { class: i ? "n" : null, text: h }))));
+    const row = (label, a, b, bold) => {
+      const A1 = C.mSum(a), B1 = C.mSum(b); const c = (x, y, inv) => x != null && y ? el("td", { class: "n " + ((inv ? -(x / y - 1) : x / y - 1) >= 0 ? "up" : "down"), text: pct(x / y - 1) }) : el("td", { class: "n meta", text: b.length ? "" : "Nuevo" });
+      const tp = A1.tePct != null && B1.tePct != null ? A1.tePct - B1.tePct : null;
+      const tr = el("tr", null, el("td", { style: bold ? "font-weight:700" : "white-space:normal;min-width:180px", text: label }), el("td", { class: "n", text: nf1.format(A1.vol) }), c(A1.vol, B1.vol), el("td", { class: "n", text: money(A1.nps) }), c(A1.nps, B1.nps), el("td", { class: "n", text: A1.tePct != null ? nf1.format(A1.tePct * 100) : "" }), el("td", { class: "n " + (tp == null ? "" : tp > 0 ? "down" : "up"), text: tp == null ? "" : (tp >= 0 ? "+" : "−") + nf1.format(Math.abs(tp * 100)) }), el("td", { class: "n", text: money(A1.nns) }), c(A1.nns, B1.nns), el("td", { class: "n", text: A1.nnsTon ? money(A1.nnsTon) : "" }), c(A1.nnsTon, B1.nnsTon), A1.so && B1.so ? c(A1.so, B1.so) : el("td"));
+      if (bold) tr.style.background = "var(--cocoa-soft)"; tb.append(tr);
+    };
+    const gA = C.groupBy(cA, c => c.cat), gB = C.groupBy(cB, c => c.cat);
+    [...gA.keys()].sort().forEach(cat => {
+      row(cat, gA.get(cat), gB.get(cat) || [], true);
+      const kA = C.groupBy(gA.get(cat), c => c.clave), kB = C.groupBy(gB.get(cat) || [], c => c.clave);
+      [...kA.keys()].sort((x, y) => C.mSum(kA.get(y)).nns - C.mSum(kA.get(x)).nns).forEach(k => row(kA.get(k)[0].desc + (kA.get(k)[0].desc !== k ? " · " + k : ""), kA.get(k), kB.get(k) || []));
+    });
+    out.append(el("div", { class: "scroll" }, tb));
+    /* plan vs tendencia */
+    const ey = +MENS.firstEst.slice(0, 4); const py = ey + 1;
+    const planCells = cells.filter(c => c.y === py);
+    out.append(el("h3", null, "¿El plan " + py + " es alcanzable?", el("span", { class: "tag assoc", text: "Tendencia histórica" })));
+    if (!planCells.length) { out.append(el("p", { class: "note", text: "No hay meses de plan " + py + " en el archivo." })); return; }
+    const real = cells.filter(c => mStatus(c) === "R");
+    const ser = k => [...C.groupBy(real, c => c.ym)].map(([ym, a]) => ({ ym, y: a[0].y, m: a[0].m, v: C.mSum(a)[k] })).sort((a, b) => a.ym < b.ym ? -1 : 1);
+    const ft = el("table"); ft.append(el("tr", null, ...["Indicador", "Plan " + py, "Tendencia " + py, "El plan pide", "Estimado " + ey + " (meses E)", "Tendencia en esos meses"].map((h, i) => el("th", { class: i ? "n" : null, text: h }))));
+    let okAny = false, fcNps = null;
+    [["vol", "Volumen (t)", v => qty(v) + " t"], ["nps", "NPS", money], ["nns", "NNS", money]].forEach(([k, l, fm]) => {
+      const fc = C.mForecast(ser(k), py + "-12"); if (!fc) return; okAny = true; if (k === "nps") fcNps = fc;
+      const plan = C.mSum(planCells)[k]; const tr = fc.points.filter(o => o.y === py).reduce((s, o) => s + o.v, 0);
+      const estC = cells.filter(c => mStatus(c) === "E"); const est = C.mSum(estC)[k]; const estYM = new Set(estC.map(c => c.ym)); const tE = fc.points.filter(o => estYM.has(o.ym)).reduce((s, o) => s + o.v, 0);
+      const gap = tr ? plan / tr - 1 : null;
+      ft.append(el("tr", null, el("td", { text: l }), el("td", { class: "n", text: fm(plan) }), el("td", { class: "n", text: fm(tr) }), el("td", { class: "n " + (gap > 0.05 ? "down" : gap < -0.05 ? "up" : ""), text: gap == null ? "" : (gap >= 0 ? pct(gap) + " más" : pct(-gap, false) + " menos") }), el("td", { class: "n", text: estC.length ? fm(est) : "" }), el("td", { class: "n", text: estC.length && tE ? fm(tE) + " (" + pct(est / tE - 1) + ")" : "" })));
+    });
+    if (!okAny) { out.append(el("p", { class: "note", text: "Para proyectar la tendencia hacen falta al menos 18 meses reales con un año completo. Con 2024 el cálculo será más sólido." })); return; }
+    out.append(el("div", { class: "scroll" }, ft));
+    if (fcNps) {
+      const planM = []; for (let m = 1; m <= 12; m++) { const cc = planCells.filter(c => c.m === m); planM.push(cc.length ? C.mSum(cc).nps : null); }
+      chart("mplan", out, { type: "line", aria: "Plan contra tendencia", data: { labels: MES_CORTO, datasets: [
+        { label: "Plan " + py + " (NPS)", data: planM, borderColor: css("--brand"), backgroundColor: css("--brand"), borderWidth: 2, pointRadius: 2, borderDash: [6, 4] },
+        { label: "Tendencia " + py + " (NPS)", data: MES_CORTO.map((_, i) => { const o = fcNps.points.find(p => p.y === py && p.m === i + 1); return o ? o.v : null; }), borderColor: css("--cocoa"), backgroundColor: css("--cocoa"), borderWidth: 2.5, pointRadius: 2 }] },
+        options: { interaction: { mode: "index", intersect: false }, plugins: { legend: { position: "bottom", labels: { boxWidth: 12 } }, tooltip: { callbacks: { label: c => c.dataset.label + ": " + money(c.parsed.y) } } }, scales: { y: { ticks: { callback: v => money(v) } }, x: { grid: { display: false } } } } }, 280);
+    }
+    const f0 = C.mForecast(ser("nps"), py + "-12");
+    out.append(el("p", { class: "note", text: "La tendencia repite la estacionalidad de los años completos y el crecimiento de los últimos meses reales contra los mismos meses del año anterior (" + (f0 ? pct(f0.g) : "") + " anual, con tope de ±25%). Usa " + (f0 ? f0.n : 0) + " meses reales" + (f0 && f0.mape != null ? "; al pronosticar los últimos 6 meses conocidos se equivocó en promedio " + nf1.format(f0.mape * 100) + "% por mes" : "; con 2024 se podrá medir su margen de error") + ". Si el plan pide mucho más que la tendencia, la diferencia tiene que venir de iniciativas concretas: precio, distribución, exhibición o lanzamientos." }));
+  }
+
   /* ---------- fuentes ---------- */
   const SOURCES = [
     ["int", "Ventas internas", "SAP (sell-in), NielsenIQ (sell-out del mercado), Retail Link de Walmart, OXXO y otras cadenas (scan data).", "Exporta a Excel por semana, con estado, canal, producto, piezas, pesos y gramaje.", null],
@@ -1412,6 +1768,7 @@ input[type=range]{accent-color:var(--brand)}
       poblacion: [["Estado", "Población", "Ingreso promedio por hogar"], ["Jalisco", 8350000, 70000], ["Nuevo León", 5780000, 85000]],
       gastoEstatal: [["Fecha", "Estado", "Valor"], ["2026-01-05", "Jalisco", 3.2], ["2026-01-05", "Nuevo León", 4.1]],
       gastoNacional: [["Fecha", "Monto"], ["2026-01-05", 4200], ["2026-01-06", 4150]],
+      mensual: [["Clave", "Descripción", "Categoría", "Concepto", "Ene-26", "Feb-26", "Mar-26", "…", "Dic-26"], ["12345001", "KitKat 12 piezas", "Chocolate Impulso", "Vol", 3.4, 4.6, 3.6, "", 5.2], ["12345001", "KitKat 12 piezas", "Chocolate Impulso", "NPS", 760000, 1020000, 805000, "", 1150000], ["12345001", "KitKat 12 piezas", "Chocolate Impulso", "TE", "15%", "16%", "15%", "", "18%"], ["12345001", "KitKat 12 piezas", "Chocolate Impulso", "NNS", 620000, 830000, 660000, "", 910000], ["12345001", "KitKat 12 piezas", "Chocolate Impulso", "SO", 1000000, 1350000, 1060000, "", 1500000]],
       clima: [["Fecha", "Estado", "Temperatura máxima"], ["2026-01-05", "Jalisco", 26.4], ["2026-01-05", "Nuevo León", 22.1]]
     };
     C.TYPE_ORDER.forEach(t => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ex[t]), C.SCHEMAS[t].short.slice(0, 31)));
